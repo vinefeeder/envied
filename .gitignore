@@ -25,7 +25,7 @@ unshackle/certs/
 unshackle/WVDs/
 unshackle/PRDs/
 temp/
-services/
+#services/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
