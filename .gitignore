@@ -7,7 +7,7 @@ update_check.json
 *.exe
 *.dll
 *.crt
-*.wvd
+#*.wvd
 *.prd
 *.der
 *.pem
@@ -22,7 +22,7 @@ device_vmp_blob
 unshackle/cache/
 unshackle/cookies/
 unshackle/certs/
-unshackle/WVDs/
+#unshackle/WVDs/
 unshackle/PRDs/
 temp/
 #services/
