@@ -77,7 +77,7 @@ def main(version: bool, debug: bool, log_path: Path) -> None:
 )
 
 
-    if version:
+    '''if version:
         return
 
     if config.update_checks:
@@ -95,7 +95,7 @@ def main(version: bool, debug: bool, log_path: Path) -> None:
                 )
         except Exception:
             pass
-
+    '''
 
 @atexit.register
 def save_log():
