@@ -1,16 +1,11 @@
-<p align="center">
-    <img width="16" height="16" alt="no_encryption" src="https://github.com/user-attachments/assets/6ff88473-0dd2-4bbc-b1ea-c683d5d7a134" /> unshackle
-    <br/>
-    <sup><em>Movie, TV, and Music Archival Software</em></sup>
-    <br/>
-      <a href="https://discord.gg/mHYyPaCbFK">
-        <img src="https://img.shields.io/discord/1395571732001325127?label=&logo=discord&logoColor=ffffff&color=7289DA&labelColor=7289DA" alt="Discord">
-    </a>
-</p>
 
-## What is unshackle?
 
-unshackle is a fork of [Devine](https://github.com/devine-dl/devine/), a powerful archival tool for downloading movies, TV shows, and music from streaming services. Built with a focus on modularity and extensibility, it provides a robust framework for content acquisition with support for DRM-protected content.
+## What is envied?
+
+Envied is a fork of [Devine](https://github.com/devine-dl/devine/). The name 'envied' is an anagram of Devine, and as such, pays hommage to the origianl author. 
+Is is based on v 1.4.3 of unshackle an is now a powerful archival tool for downloading movies, TV shows, and music from streaming services. Built with a focus on modularity and extensibility, it provides a robust framework for content acquisition with support for DRM-protected content.
+
+No commands have been changed 'uv run unshackle' still works as usual. The majaor difference is that envied comes complete.
 
 ## Key Features
 
@@ -94,7 +89,7 @@ For guidance on creating services, see our [WIKI documentation](https://github.c
 unshackle and it's community pages should be treated with the same kindness as other projects.
 Please refrain from spam or asking for questions that infringe upon a Service's End User License Agreement.
 
-1. Do not use unshackle for any purposes of which you do not have the rights to do so.
+1. Do not use envied for any purposes of which you do not have the rights to do so.
 2. Do not share or request infringing content; this includes widevine Provision Keys, Content Encryption Keys,
    or Service API Calls or Code.
 3. The Core codebase is meant to stay Free and Open-Source while the Service code should be kept private.
