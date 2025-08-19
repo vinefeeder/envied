@@ -9,7 +9,8 @@ No commands have been changed 'uv run unshackle' still works as usual.
 
 The majaor difference is that envied comes complete and need little configuration.
 CDM and services are taken care of.
-The prime reason for the existence of envied is a --select titles function.
+The prime reason for the existence of envied is a --select-titles function.
+## Select Titles Feature
 ![--select-titles option](https://github.com/vinefeeder/envied/blob/main/img/envied1.png)
 
 ## Key Features
