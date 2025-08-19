@@ -7,9 +7,12 @@ Is is based on v 1.4.3 of unshackle. It is a powerful archival tool for download
 
 No commands have been changed 'uv run unshackle' still works as usual. 
 
-The majaor difference is that envied comes complete and need little configuration.
+The major difference is that envied comes complete and need little configuration.
 CDM and services are taken care of.
 The prime reason for the existence of envied is a --select-titles function.
+
+If you already use unshackle you'll probably just want to replace envies/unshackle/unshackle.yaml
+with your own. But the exisiting yaml is close to working - just needs a few directory locations.
 ## Select Titles Feature
 ![--select-titles option](https://github.com/vinefeeder/envied/blob/main/img/envied1.png)
 
