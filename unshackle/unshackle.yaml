@@ -65,9 +65,9 @@ key_vaults:
   host: http://api.drmlab.io/vault/
   password: gEX75q7I5YVkvgF5SUkcNd41IbGrDtTT
 - type: API
-  name: "Online Vault"
-  uri: "https://cdrm-project.com/api/cache"
-  token: "CDRM"
+  name: CDRM Vault
+  uri: https://cdrm-project.com/api/cache
+  token: CDRM
 
 
 # Choose what software to use to download data
