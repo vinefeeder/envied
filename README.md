@@ -83,7 +83,7 @@ uv run unshackle dl SERVICE_NAME CONTENT_ID
 
 For comprehensive setup guides, configuration options, and advanced usage:
 
-📖 **[Visit our WIKI](https://github.com/unshackle-dl/unshackle/wiki)**
+📖 **[Visit their WIKI](https://github.com/unshackle-dl/unshackle/wiki)**
 
 The WIKI contains detailed information on:
 
@@ -91,11 +91,11 @@ The WIKI contains detailed information on:
 - DRM configuration
 - Advanced features and troubleshooting
 
-For guidance on creating services, see our [WIKI documentation](https://github.com/unshackle-dl/unshackle/wiki).
+For guidance on creating services, see their [WIKI documentation](https://github.com/unshackle-dl/unshackle/wiki).
 
 ## End User License Agreement
 
-unshackle and it's community pages should be treated with the same kindness as other projects.
+Envied, and it's community pages, should be treated with the same kindness as other projects.
 Please refrain from spam or asking for questions that infringe upon a Service's End User License Agreement.
 
 1. Do not use envied for any purposes of which you do not have the rights to do so.
