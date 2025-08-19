@@ -23,20 +23,19 @@ credentials:
   CBC: email:password
 # Override default directories used across unshackle
 directories:
-  cache: 
-  cookies: 
+  cache: Cache
+  cookies: Cookies
   dcsl: DCSL # Device Certificate Status List
-  downloads: 
-  logs: 
-  temp: 
-  wvds: 
-  prds: 
-  User_Configs: 
+  downloads: Downloads
+  logs: Logs
+  temp: Temp
+  wvds: WVDs
+  prds: PRDs
   # Additional directories that can be configured:
   # commands: Commands
   services:
-    - 
-  vaults: 
+    - ./unshackle/services/
+  vaults: vaults
   # fonts: Fonts
 
 # Pre-define which Widevine or PlayReady device to use for each Service
@@ -58,7 +57,7 @@ remote_cdm:
 key_vaults:
 - type: SQLite
   name: Local vault
-  path: 
+  path: /home/angela/Programming/gits/devine-services/key_store.db
 
 - type: HTTPAPI
   name: drmlab
@@ -147,5 +146,5 @@ services:
 #    password: password
 #    server_map:
 #     us: 6918
-#     uk: 2613
-#     nz: 100
+#      uk: 2613
+#      nz: 100
