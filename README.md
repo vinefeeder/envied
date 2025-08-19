@@ -33,7 +33,7 @@ The prime reason for the existence of envied is a --select-titles function.
 This installs the latest version directly from the GitHub repository:
 
 ```shell
-git clone https://github.com/unshackle-dl/unshackle.git
+git clone https://github.com/vinefeeder/envied.git
 cd unshackle
 uv sync
 uv run unshackle --help
@@ -42,7 +42,7 @@ uv run unshackle --help
 ### Install unshackle as a global (per-user) tool
 
 ```bash
-uv tool install git+https://github.com/unshackle-dl/unshackle.git
+uv tool install git+https://github.com/vinefeeder/envied.git
 # Then run:
 uvx unshackle --help   # or just `unshackle` once PATH updated
 ```
@@ -67,7 +67,7 @@ uvx unshackle --help   # or just `unshackle` once PATH updated
 uv run unshackle --help
 
 # Configure your settings
-git clone https://github.com/unshackle-dl/unshackle.git
+git clone https://github.com/vinefeeder/envied.git
 cd unshackle
 uv sync
 uv run unshackle --help
