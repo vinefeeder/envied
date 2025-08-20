@@ -7,7 +7,7 @@ Is is based on v 1.4.3 of unshackle. It is a powerful archival tool for download
 
 No commands have been changed 'uv run unshackle' still works as usual. 
 
-The major difference is that envied comes complete and need little configuration.
+The major difference is that envied comes complete and needs little configuration.
 CDM and services are taken care of.
 The prime reason for the existence of envied is a --select-titles function.
 
@@ -55,13 +55,6 @@ uvx unshackle --help   # or just `unshackle` once PATH updated
 
 > **Recommended:** Use `uv run unshackle` instead of direct command execution to ensure proper virtual environment activation.
 
-## Planned Features
-
-- 🖥️ **Web UI Access & Control** - Manage and control unshackle from a modern web interface.
-- 🔄 **Sonarr/Radarr Interactivity** - Direct integration for automated personal downloads.
-- ⚙️ **Better ISM Support** - Improve on ISM support for multiple services
-- 🔉 **ATMOS** - Better Atmos Support/Selection
-- 🎵 **Music** - Cleanup Audio Tagging using the [tags.py](unshackle/core/utils/tags.py) for artist/track name etc.
 
 ### Basic Usage
 
