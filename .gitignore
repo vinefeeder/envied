@@ -1,4 +1,6 @@
 # unshackle
+Logs/
+Cache/
 unshackle.yaml
 unshackle.yml
 update_check.json
