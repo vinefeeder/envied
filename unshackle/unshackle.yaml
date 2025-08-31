@@ -124,8 +124,6 @@ filenames:
   subtitle: "Subtitle_{id}_{language}.srt"
 
 # API key for The Movie Database (TMDB)
-tmdb_api_key: ""
-tvdb_api_key: "deec52e0-019c-44ec-b4eb-0f6c48473b20"
 
 # conversion_method:
 # - auto (default): Smart routing - subby for WebVTT/SAMI, standard for others
