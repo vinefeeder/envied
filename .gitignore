@@ -15,7 +15,8 @@ update_check.json
 *.db
 *.ttf
 *.otf
-".json
+*.json
+*.yml
 device_cert
 device_client_id_blob
 device_private_key
