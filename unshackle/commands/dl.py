@@ -512,7 +512,7 @@ class dl:
             return
         
         # modification to enable beaupy module to list titles for download for manual selection 
-        # use --select-titles after dl in unshackle command
+        # use --select-titles after dl in envied command
         
         Config.transient = True
         if select_titles and type(titles)==Series:
