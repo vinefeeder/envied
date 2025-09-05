@@ -31,7 +31,7 @@ LOGGING_PATH = None
     help="Log path (or filename). Path can contain the following f-string args: {name} {time}.",
 )
 def main(version: bool, debug: bool, log_path: Path) -> None:
-    """unshackle—Modular Movie, TV, and Music Archival Software."""
+    """envied—Modular Movie, TV, and Music Archival Software."""
     logging.basicConfig(
         level=logging.DEBUG if debug else logging.INFO,
         format="%(message)s",
