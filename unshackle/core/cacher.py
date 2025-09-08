@@ -6,10 +6,8 @@ from datetime import datetime, timedelta
 from os import stat_result
 from pathlib import Path
 from typing import Any, Optional, Union
-
 import jsonpickle
 import jwt
-
 from unshackle.core.config import config
 
 EXP_T = Union[datetime, str, int, float]
