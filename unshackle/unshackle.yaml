@@ -14,31 +14,29 @@ decryption: mp4decrypt
 scene_naming: false
 series_year: false
 
-# Widevine pssh display; fold, crop or ellipsis
-pssh_display: ellipsis
-
 # Login credentials for each Service
 credentials:
-  ALL4: email:password
-  ROKU: email:password
-  TVNZ: email:password
-  TPTV: email:password
-  CBC: email:password
+  ALL4: angela.slaney@gmail.com:Nood13sh
+  ROKU: moretonplumber@yandex.com:$WPJ~Mdh2:X@EtB
+  TVNZ: moretonplumber@yandex.com:penumbra
+  TPTV: moretonplumber@yandex.com:penumbra1234
+  CBC: moretonplumber@yandex.com:penumbra
 # Override default directories used across unshackle
 directories:
-  cache: Cache
-  cookies: Cookies
+  cache: /home/angela/.local/tmp/devine
+  cookies: /home/angela/.local/share/devine/cookies
   dcsl: DCSL # Device Certificate Status List
-  downloads: Downloads
-  logs: Logs
-  temp: Temp
-  wvds: WVDs
+  downloads: /home/angela/Downloads/devine
+  logs: /home/angela/.local/tmp/devine/
+  temp: /home/angela/.local/tmp/devine/
+  wvds: /home/angela/.local/share/devine/WVDs/
   prds: PRDs
+  User_Configs: /home/angela/.local/share/devine/
   # Additional directories that can be configured:
   # commands: Commands
   services:
-    - ./unshackle/services/
-  vaults: ./unshackle/vaults/
+    - /home/angela/.local/share/devine/services/
+  vaults: /home/angela/.local/share/devine/vaults/
   # fonts: Fonts
 
 # Pre-define which Widevine or PlayReady device to use for each Service
@@ -46,7 +44,6 @@ cdm:
   default: device
 
 # Use pywidevine Serve-compliant Remote CDMs
-# Currently not working!
 #remote_cdm:
 #    - name: "CDRM_Project_API"
 #      device_type: ANDROID
@@ -59,18 +56,18 @@ cdm:
 
 # Key Vaults store your obtained Content Encryption Keys (CEKs)
 key_vaults:
-#- type: SQLite
-#  name: Local vault
-#  path: key_store.db
+- type: SQLite
+  name: Local vault
+  path: /home/angela/Programming/gits/devine-services/key_store.db
 
 - type: HTTPAPI
   name: drmlab
   host: http://api.drmlab.io/vault/
   password: gEX75q7I5YVkvgF5SUkcNd41IbGrDtTT
-- type: API
-  name: CDRM Vault
-  uri: https://cdrm-project.com/api/cache
-  token: CDRM
+#- type: API
+#  name: "Online Vault"
+#  uri: "https://cdrm-project.com/api/cache"
+#  token: "CDRM"
 
 
 # Choose what software to use to download data
@@ -124,6 +121,8 @@ filenames:
   subtitle: "Subtitle_{id}_{language}.srt"
 
 # API key for The Movie Database (TMDB)
+tmdb_api_key: ""
+tvdb_api_key: "deec52e0-019c-44ec-b4eb-0f6c48473b20"
 
 # conversion_method:
 # - auto (default): Smart routing - subby for WebVTT/SAMI, standard for others
@@ -142,11 +141,12 @@ services:
   #   api_key: "service_specific_key"
 
 # Legacy NordVPN configuration (use proxy_providers instead)
-#proxy_providers:
-#  nordvpn:
-#    username: username
-#    password: password
-#    server_map:
-#     us: 6918
-#      uk: 2613
-#      nz: 100
+proxy_providers:
+  nordvpn:
+    username: gBM9ejjmY1J15jccH12VT7Qy
+    password: 1kmuCrRXnT55uAjiUTd8twv9
+    server_map:
+      us: 6918
+      uk: 2613
+      nz: 100
+
