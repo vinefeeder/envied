@@ -18,7 +18,8 @@ with your own. But the exisiting yaml is close to working - just needs a few dir
 
 ## Divergence from Envied's Parent
 - **select-titles option**  avoid the uncertainty of -w S26E03 gobbledegook to get your video
-- **Singleton Design Pattern** Good coding practice: where possible, a single instance of a Class is created and re-used. Saving time and resources. 
+- **Singleton Design Pattern** Good coding practice: where possible, a single instance of a Class is created and re-used. Saving time and resources.
+- **Multitron Design Pattern** For those times when a Singleton will not do. Re-use Classes with care for the calling parameters. 
 - **Clear Branding**  Clear presentation of the program name!
 
 ## Quick Start
