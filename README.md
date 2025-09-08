@@ -16,18 +16,10 @@ with your own. But the exisiting yaml is close to working - just needs a few dir
 ## Select Titles Feature
 ![--select-titles option](https://github.com/vinefeeder/envied/blob/main/img/envied1.png)
 
-## Key Features
-
-- 🚀 **Easy Installation** - Simple UV installation
-- 🎥 **Multi-Media Support** - Movies, TV episodes, and music
-- 🛠️ **Built-in Parsers** - DASH/HLS and ISM manifest support
-- 🔒 **DRM Support** - Widevine and PlayReady integration
-- 🌈 **HDR10+DV Hybrid** - Hybrid Dolby Vision injection via [dovi_tool](https://github.com/quietvoid/dovi_tool)
-- 💾 **Flexible Storage** - Local and remote key vaults
-- 👥 **Multi-Profile Auth** - Support for cookies and credentials
-- 🤖 **Smart Naming** - Automatic P2P-style filename structure
-- ⚙️ **Configurable** - YAML-based configuration
-- ❤️ **Open Source** - Fully open-source with community contributions welcome
+## Divergence from Envied's Parent
+- **select-titles option**  avoid the uncertainty of -w S26E03 gobbledegook to get your video
+- **Singleton Design Pattern** Good coding practice: where possible, a single instance of a Class is created and re-used. Saving time and resources. 
+- **Clear Branding**  Clear presentation of the program name!
 
 ## Quick Start
 
