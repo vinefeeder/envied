@@ -20,6 +20,10 @@ scene_naming: true
 #  false for style - Show Name S01E01 Episode Name
 series_year: true
 
+# Widevine/Play Ready pssh display; fold, crop or ellipsis
+# determines how the pssh is shown on screen
+pssh_display: ellipsis
+
 # Check for updates from GitHub repository on startup (default: true)
 update_checks: true
 
