@@ -38,7 +38,7 @@ directories:
   # Additional directories that can be configured:
   # commands: Commands
   services:
-    - /home/angela/.local/share/devine/services/
+    - unshackle/services/
   vaults: /home/angela/.local/share/devine/vaults/
   # fonts: Fonts
 

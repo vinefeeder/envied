@@ -73,7 +73,7 @@ directories:
   # Additional directories that can be configured:
   # commands: Commands
   services:
-    - /path/to/services
+    - unshackle/services
     - /other/path/to/services
   # vaults: Vaults
   # fonts: Fonts
