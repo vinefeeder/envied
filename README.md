@@ -21,6 +21,7 @@ with your own. But the exisiting yaml is close to working - just needs a few dir
 - **Singleton Design Pattern** Good coding practice: where possible, a single instance of a Class is created and re-used. Saving time and resources.
 - **Multitron Design Pattern** For those times when a Singleton will not do. Re-use Classes with care for the calling parameters. 
 - **Clear Branding**  Clear presentation of the program name!
+- **No Free Ride for Spammers**  Envied will not implement any methods used to connect to Decrypt Labs
 
 ## Quick Start
 
