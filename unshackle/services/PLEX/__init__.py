@@ -117,6 +117,10 @@ class PLEX(Service):
                 )
 
     def get_titles(self) -> Movies | Series:
+        # check lang code and remove if exists
+        pattern = re.compile(r'^(https?://[^/]+)(?:/[a-z]{2}-[A-Z]{2})?(.*)$')
+        self.title =  pattern.sub(r'\1\2', self.title)
+
         url_pattern = re.compile(
             r"^https://watch.plex.tv/"
             r"(?P<type>movie|show)/"
