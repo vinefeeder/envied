@@ -41,7 +41,7 @@ from rich.text import Text
 from rich.tree import Tree
 
 from unshackle.core import binaries
-from unshackle.core.cdm import DecryptLabsRemoteCDM
+#from unshackle.core.cdm import DecryptLabsRemoteCDM
 from unshackle.core.config import config
 from unshackle.core.console import console
 from unshackle.core.constants import DOWNLOAD_LICENCE_ONLY, AnyTrack, context_settings
@@ -354,10 +354,10 @@ class dl:
                 sys.exit(1)
 
             if self.cdm:
-                if isinstance(self.cdm, DecryptLabsRemoteCDM):
+                '''if isinstance(self.cdm, DecryptLabsRemoteCDM):
                     drm_type = "PlayReady" if self.cdm.is_playready else "Widevine"
-                    self.log.info(f"Loaded {drm_type} Remote CDM: DecryptLabs (L{self.cdm.security_level})")
-                elif hasattr(self.cdm, "device_type") and self.cdm.device_type.name in ["ANDROID", "CHROME"]:
+                    self.log.info(f"Loaded {drm_type} Remote CDM: DecryptLabs (L{self.cdm.security_level})")'''
+                if hasattr(self.cdm, "device_type") and self.cdm.device_type.name in ["ANDROID", "CHROME"]:
                     self.log.info(f"Loaded Widevine CDM: {self.cdm.system_id} (L{self.cdm.security_level})")
                 else:
                     self.log.info(
@@ -923,9 +923,6 @@ class dl:
                                             service.get_playready_license
                                             if (
                                                 isinstance(self.cdm, PlayReadyCdm)
-                                                or (
-                                                    isinstance(self.cdm, DecryptLabsRemoteCDM) and self.cdm.is_playready
-                                                )
                                             )
                                             and hasattr(service, "get_playready_license")
                                             else service.get_widevine_license,
@@ -1254,16 +1251,14 @@ class dl:
             return
 
         if isinstance(drm, Widevine):
-            if not isinstance(self.cdm, (WidevineCdm, DecryptLabsRemoteCDM)) or (
-                isinstance(self.cdm, DecryptLabsRemoteCDM) and self.cdm.is_playready
-            ):
+            if not isinstance(self.cdm, (WidevineCdm)):
                 widevine_cdm = self.get_cdm(self.service, self.profile, drm="widevine")
                 if widevine_cdm:
                     self.log.info("Switching to Widevine CDM for Widevine content")
                     self.cdm = widevine_cdm
         elif isinstance(drm, PlayReady):
-            if not isinstance(self.cdm, (PlayReadyCdm, DecryptLabsRemoteCDM)) or (
-                isinstance(self.cdm, DecryptLabsRemoteCDM) and not self.cdm.is_playready
+            if not isinstance(self.cdm, (PlayReadyCdm)) or (
+                isinstance(self.cdm) and not self.cdm.is_playready
             ):
                 playready_cdm = self.get_cdm(self.service, self.profile, drm="playready")
                 if playready_cdm:
@@ -1547,7 +1542,7 @@ class dl:
                 del cdm_api["type"]
 
                 # All DecryptLabs CDMs use DecryptLabsRemoteCDM
-                return DecryptLabsRemoteCDM(service_name=service, vaults=self.vaults, **cdm_api)
+                return None
             else:
                 del cdm_api["name"]
                 if "type" in cdm_api:

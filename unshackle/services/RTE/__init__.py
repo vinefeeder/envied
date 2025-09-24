@@ -34,6 +34,7 @@ class RTE(Service):
     \b
     Tips:
         - Input (pay attention to the URL format):
+          
           SERIES: https://www.rte.ie/player/series/crossfire/10003928-00-0000
           EPISODE: https://www.rte.ie/player/series/crossfire/10003928-00-0000?epguid=AQ10003929-01-0001
           MOVIE: https://www.rte.ie/player/movie/glass/360230440380
@@ -187,6 +188,7 @@ class RTE(Service):
         ]
 
     def _show(self, title: str) -> Episode:
+        # http://data.entertainment.tv.theplatform.eu/entertainment/data/ProgramAvailability/76573736378
         entry = self._request("/mpx/1uC-gC/rte-prd-prd-all-movies-series?byGuid={}".format(title))["entries"][0]["id"]
         data = self._request("/mpx/1uC-gC/rte-prd-prd-all-programs?bySeriesId={}".format(entry.split("/")[-1]))["entries"]
 
