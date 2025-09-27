@@ -30,7 +30,7 @@ class Config:
 
     class _Filenames:
         # default filenames, do not modify here, set via config
-        log = "unshackle_{name}_{time}.log"  # Directories.logs
+        log = "envied_{name}_{time}.log"  # Directories.logs
         config = "config.yaml"  # Directories.services / tag
         root_config = "unshackle.yaml"  # Directories.user_configs
         chapters = "Chapters_{title}_{random}.txt"  # Directories.temp
@@ -88,11 +88,12 @@ class Config:
         self.tag_group_name: bool = kwargs.get("tag_group_name", True)
         self.tag_imdb_tmdb: bool = kwargs.get("tag_imdb_tmdb", True)
         self.tmdb_api_key: str = kwargs.get("tmdb_api_key") or ""
+        self.decrypt_labs_api_key: str = ""
         self.update_checks: bool = kwargs.get("update_checks", True)
         self.update_check_interval: int = kwargs.get("update_check_interval", 24)
         self.scene_naming: bool = kwargs.get("scene_naming", True)
         self.series_year: bool = kwargs.get("series_year", True)
-        self.pssh_display: str = kwargs.get("pssh_display") or "fold"  
+        self.pssh_display: str = kwargs.get("pssh_display") or "fold" 
         self.title_cache_time: int = kwargs.get("title_cache_time", 1800)  # 30 minutes default
         self.title_cache_max_retention: int = kwargs.get("title_cache_max_retention", 86400)  # 24 hours default
         self.title_cache_enabled: bool = kwargs.get("title_cache_enabled", True)

@@ -23,7 +23,7 @@ class UpdateChecker:
         DEFAULT_CHECK_INTERVAL: Default time between checks in seconds (24 hours)
     """
 
-    REPO_URL = "https://api.github.com/repos/unshackle-dl/unshackle/releases/latest"
+    REPO_URL = "https://api.github.com/repos/envied-dl/envied/releases/latest"
     TIMEOUT = 5
     DEFAULT_CHECK_INTERVAL = 24 * 60 * 60
 

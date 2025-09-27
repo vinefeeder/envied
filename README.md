@@ -2,8 +2,8 @@
 
 ## What is envied?
 
-Envied is a fork of [Devine](https://github.com/devine-dl/devine/). The name 'envied' is an anagram of Devine, and as such, pays homage to the original author. 
-Is is based on v 1.4.3 of unshackle. It is a powerful archival tool for downloading movies, TV shows, and music from streaming services. Built with a focus on modularity and extensibility, it provides a robust framework for content acquisition with support for DRM-protected content.
+Envied is a fork of [Devine](https://github.com/devine-dl/devine/). The name 'envied' is an anagram of Devine, and as such, pays homage to the original author rlaphoenix. 
+Is is based on v 1.4.7 of unshackle. It is a powerful archival tool for downloading movies, TV shows, and music from streaming services. Built with a focus on modularity and extensibility, it provides a robust framework for content acquisition with support for DRM-protected content.
 
 No commands have been changed 'uv run unshackle' still works as usual. 
 

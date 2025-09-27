@@ -21,7 +21,7 @@ from unshackle.core.titles.title import Title
 
 STRIP_RE = re.compile(r"[^a-z0-9]+", re.I)
 YEAR_RE = re.compile(r"\s*\(?[12][0-9]{3}\)?$")
-HEADERS = {"User-Agent": "unshackle-tags/1.0"}
+HEADERS = {"User-Agent": "envied-tags/1.0"}
 
 
 log = logging.getLogger("TAGS")
