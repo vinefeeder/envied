@@ -1,6 +1,10 @@
 import atexit
 import logging
+import warnings
 from pathlib import Path
+
+# Suppress SyntaxWarning from unmaintained tinycss package (dependency of subby)
+warnings.filterwarnings("ignore", category=SyntaxWarning, module="tinycss")
 
 import click
 import urllib3
