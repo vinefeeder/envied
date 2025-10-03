@@ -8,7 +8,7 @@ set_terminal_bg: false
 muxing:
   set_title: false
 
-#
+#  mp4decrypt or shaka-packager
 decryption: mp4decrypt
 
 scene_naming: false
