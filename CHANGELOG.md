@@ -4,6 +4,118 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.4.8] - 2025-09-25
+
+### Added
+
+- **curl_cffi Session Support**: Enhanced anti-bot protection with browser impersonation
+  - Added new session utility with curl_cffi support for bypassing anti-bot measures
+  - Browser impersonation support for Chrome, Firefox, and Safari user agents
+  - Full backward compatibility with requests.Session maintained
+  - Suppressed HTTPS proxy warnings for improved user experience
+- **Download Retry Functionality**: Configurable retry mechanism for failed downloads
+  - Added retry count option to download function for improved reliability
+- **Subtitle Requirements Options**: Enhanced subtitle download control
+  - Added options for required subtitles in download command
+  - Better control over subtitle track selection and requirements
+- **Quality Selection Enhancement**: Improved quality selection options
+  - Added best available quality option in download command for optimal track selection
+- **DecryptLabs API Integration**: Not implemented in envied. We do not support spammers.
+
+### Changed
+
+- **Manifest Parser Updates**: Enhanced compatibility across all parsers
+  - Updated DASH, HLS, ISM, and M3U8 parsers to accept curl_cffi sessions
+  - Improved cookie handling compatibility between requests and curl_cffi
+- **Logging Improvements**: Reduced log verbosity for better user experience
+  - Changed duplicate track log level to debug to reduce console noise
+  - Dynamic CDM selection messages moved to debug-only output
+
+### Fixed
+
+- **Remote CDM Reuse**: Fixed KeyError in dynamic CDM selection
+  - Prevents KeyError when reusing remote CDMs in dynamic selection process
+  - Creates copy of CDM dictionary before modification to prevent configuration mutation
+  - Allows same CDM to be selected multiple times within session without errors
+
+## [1.4.6] - 2025-09-13
+
+### Added
+
+- **Quality-Based CDM Selection**: Dynamic CDM selection based on video resolution
+  - Automatically selects appropriate CDM (L3/L1) based on video track quality
+  - Supports quality thresholds in configuration (>=, >, <=, <, exact match)
+  - Pre-selects optimal CDM based on highest quality across all video tracks
+  - Maintains backward compatibility with existing CDM configurations
+- **Automatic Audio Language Metadata**: Intelligent embedded audio language detection
+  - Automatically sets audio language metadata when no separate audio tracks exist
+  - Smart video track selection based on title language with fallbacks
+  - Enhanced FFmpeg repackaging with audio stream metadata injection
+- **Lazy DRM Loading**: Deferred DRM loading for multi-track key retrieval optimization
+  - Add deferred DRM loading to M3U8 parser to mark tracks for later processing
+  - Just-in-time DRM loading during download process for better performance
+
+### Changed
+
+- **Enhanced CDM Management**: Improved CDM switching logic for multi-quality downloads
+  - CDM selection now based on highest quality track to avoid inefficient switching
+  - Quality-based selection only within same DRM type (Widevine-to-Widevine, PlayReady-to-PlayReady)
+  - Single CDM used per session for better performance and reliability
+
+### Fixed
+
+- **Vault Caching Issues**: Fixed vault count display and NoneType iteration errors
+  - Fix 'NoneType' object is not iterable error in DecryptLabsRemoteCDM
+  - Fix vault count display showing 0/3 instead of actual successful vault count
+- **Service Name Transmission**: Resolved DecryptLabsRemoteCDM service name issues
+  - Fixed DecryptLabsRemoteCDM sending 'generic' instead of proper service names
+  - Added case-insensitive vault lookups for SQLite/MySQL vaults
+  - Added local vault integration to DecryptLabsRemoteCDM
+- **Import Organization**: Improved import ordering and code formatting
+  - Reorder imports in decrypt_labs_remote_cdm.py for better organization
+  - Clean up trailing whitespace in vault files
+
+### Configuration
+
+- **New CDM Configuration Format**: Extended `cdm:` section supports quality-based selection
+  ```yaml
+  cdm:
+    SERVICE_NAME:
+      "<=1080": l3_cdm_name
+      ">1080": l1_cdm_name
+      default: l3_cdm_name
+  ```
+
+## [1.4.5] - 2025-09-09
+
+### Added
+
+- **Enhanced CDM Key Caching**: Improved key caching and session management for L1/L2 devices
+  - Optimized `get_cached_keys_if_exists` functionality for better performance with L1/L2 devices
+  - Enhanced cached key retrieval logic with improved session handling
+- **Widevine Common Certificate Fallback**: Added fallback to Widevine common certificate for L1 devices
+  - Improved compatibility for L1 devices when service certificates are unavailable
+- **Enhanced Vault Loading**: Improved vault loading and key copying logic
+  - Better error handling and key management in vault operations
+- **PSSH Display Optimization**: Truncated PSSH string display in non-debug mode for cleaner output
+- **CDM Error Messaging**: Added error messages for missing service certificates in CDM sessions
+
+### Changed
+
+- **Dynamic Version Headers**: Updated User-Agent headers to use dynamic version strings
+  - DecryptLabsRemoteCDM now uses dynamic version import instead of hardcoded version
+- **Intelligent CDM Caching**: Implemented intelligent caching system for CDM license requests
+  - Enhanced caching logic reduces redundant license requests and improves performance
+- **Enhanced Tag Handling**: Improved tag handling for TV shows and movies from Simkl data
+  - Better metadata processing and formatting for improved media tagging
+
+### Fixed
+
+- **CDM Session Management**: Clean up session data when retrieving cached keys
+  - Remove decrypt_labs references. we so not support spammers.
+  - Ensures clean state for subsequent requests and prevents session conflicts
+- **Tag Formatting**: Fixed formatting issues in tag processing
+- **Import Order**: Fixed import order issues in tags module
 
 ## [1.4.4] - 2025-09-02
 

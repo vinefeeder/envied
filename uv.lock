@@ -137,7 +137,7 @@ wheels = [
 
 [[package]]
 name = "beaupy"
-version = "3.10.1"
+version = "3.10.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "emoji" },
@@ -145,9 +145,9 @@ dependencies = [
     { name = "questo" },
     { name = "rich" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/24/60/3b3b4d23e135c6828792f84d46be86c126fe72771121723c5775c43a6812/beaupy-3.10.1.tar.gz", hash = "sha256:8d8a1cde212264a0402a672eed322488fb212f2e11c80c08ed011a70b489ef12", size = 16417, upload-time = "2025-01-14T18:19:27.888Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d0/ce/81f6aa40d2c779a3f0a0ac11d130a9c14c6b4f53700cd279980f3b9ecdf0/beaupy-3.10.2.tar.gz", hash = "sha256:da1a644f71e60fddc599084a5ef8bd41118b9c779527ce501289729e60e7db90", size = 16535, upload-time = "2025-10-06T18:47:50.063Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/76/a8/0787af1185f990023d69240a61c46b853bad35d040206b9704179bac8dac/beaupy-3.10.1-py3-none-any.whl", hash = "sha256:b31337581fc445fc81b07701d97de6409d6b13a4d0b620ca461475c2756c45ca", size = 14675, upload-time = "2025-01-14T18:19:25.533Z" },
+    { url = "https://files.pythonhosted.org/packages/d6/bf/42536b458a7108a3b880bbfc99783e73b1c3b4c24d4ede3057bb22c44e07/beaupy-3.10.2-py3-none-any.whl", hash = "sha256:c5398416b6a9dfed25d56be4caf4b995c41c9d18aa132203ef69fa3d8953bcc5", size = 14842, upload-time = "2025-10-06T18:47:48.8Z" },
 ]
 
 [[package]]
@@ -1214,6 +1214,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pysubs2"
+version = "1.8.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/31/4a/becf78d9d3df56e6c4a9c50b83794e5436b6c5ab6dd8a3f934e94c89338c/pysubs2-1.8.0.tar.gz", hash = "sha256:3397bb58a4a15b1325ba2ae3fd4d7c214e2c0ddb9f33190d6280d783bb433b20", size = 1130048, upload-time = "2024-12-24T12:39:47.769Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/99/09/0fc0719162e5ad723f71d41cf336f18b6b5054d70dc0fe42ace6b4d2bdc9/pysubs2-1.8.0-py3-none-any.whl", hash = "sha256:05716f5039a9ebe32cd4d7673f923cf36204f3a3e99987f823ab83610b7035a0", size = 43516, upload-time = "2024-12-24T12:39:44.469Z" },
+]
+
+[[package]]
 name = "python-yakh"
 version = "0.4.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1560,7 +1569,7 @@ wheels = [
 
 [[package]]
 name = "unshackle"
-version = "1.4.4"
+version = "1.4.8"
 source = { editable = "." }
 dependencies = [
     { name = "appdirs" },
@@ -1587,6 +1596,7 @@ dependencies = [
     { name = "pymp4" },
     { name = "pymysql" },
     { name = "pyplayready" },
+    { name = "pysubs2" },
     { name = "pywidevine", extra = ["serve"] },
     { name = "pyyaml" },
     { name = "requests", extra = ["socks"] },
@@ -1617,7 +1627,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "appdirs", specifier = ">=1.4.4,<2" },
-    { name = "beaupy", specifier = ">=3.10.1" },
+    { name = "beaupy", specifier = ">=3.10.2" },
     { name = "brotli", specifier = ">=1.1.0,<2" },
     { name = "chardet", specifier = ">=5.2.0,<6" },
     { name = "click", specifier = ">=8.1.8,<9" },
@@ -1640,6 +1650,7 @@ requires-dist = [
     { name = "pymp4", specifier = ">=1.4.0,<2" },
     { name = "pymysql", specifier = ">=1.1.0,<2" },
     { name = "pyplayready", specifier = ">=0.6.3,<0.7" },
+    { name = "pysubs2", specifier = ">=1.7.0,<2" },
     { name = "pywidevine", extras = ["serve"], specifier = ">=1.8.0,<2" },
     { name = "pyyaml", specifier = ">=6.0.1,<7" },
     { name = "requests", extras = ["socks"], specifier = ">=2.31.0,<3" },
