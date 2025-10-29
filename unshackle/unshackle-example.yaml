@@ -1,11 +1,11 @@
 # Group or Username to postfix to the end of all download filenames following a dash
-tag: user_tag
+tag: ''
 
 # Enable/disable tagging with group name (default: true)
-tag_group_name: true
+tag_group_name: fasle
 
 # Enable/disable tagging with IMDB/TMDB/TVDB details (default: true)
-tag_imdb_tmdb: true
+tag_imdb_tmdb: false
 
 # Set terminal background color (custom option not in CONFIG.md)
 set_terminal_bg: false
@@ -13,16 +13,12 @@ set_terminal_bg: false
 # Set file naming convention
 #  true for style - Prime.Suspect.S07E01.The.Final.Act.Part.One.1080p.ITV.WEB-DL.AAC2.0.H.264
 #  false for style - Prime Suspect S07E01 The Final Act - Part One
-scene_naming: true
+scene_naming: false
 
 # Whether to include the year in series names for episodes and folders (default: true)
 #  true for style - Show Name (2023) S01E01 Episode Name
 #  false for style - Show Name S01E01 Episode Name
-series_year: true
-
-# Widevine/Play Ready pssh display; fold, crop or ellipsis
-# determines how the pssh is shown on screen
-pssh_display: ellipsis
+series_year: false
 
 # Check for updates from GitHub repository on startup (default: true)
 update_checks: true
@@ -73,7 +69,7 @@ directories:
   # Additional directories that can be configured:
   # commands: Commands
   services:
-    - unshackle/services
+    - /path/to/services
     - /other/path/to/services
   # vaults: Vaults
   # fonts: Fonts
@@ -92,7 +88,44 @@ cdm:
     jane_uhd: nexus_5_l1 # Profile 'jane_uhd' uses Nexus 5 L1
     default: generic_android_l3 # Default CDM for this service
 
+  # NEW: Quality-based CDM selection
+  # Use different CDMs based on video resolution
+  # Supports operators: >=, >, <=, <, or exact match
+  EXAMPLE_QUALITY:
+    "<=1080": generic_android_l3 # Use L3 for 1080p and below
+    ">1080": nexus_5_l1 # Use L1 for above 1080p (1440p, 2160p)
+    default: generic_android_l3 # Optional: fallback if no quality match
 
+  # You can mix profiles and quality thresholds in the same service
+  NETFLIX:
+    # Profile-based selection (existing functionality)
+    john: netflix_l3_profile
+    jane: netflix_l1_profile
+    # Quality-based selection (new functionality)
+    "<=720": netflix_mobile_l3
+    "1080": netflix_standard_l3
+    ">=1440": netflix_premium_l1
+    # Fallback
+    default: netflix_standard_l3
+
+# Use pywidevine Serve-compliant Remote CDMs
+remote_cdm:
+  - name: "chrome"
+    device_name: chrome
+    device_type: CHROME
+    system_id: 27175
+    security_level: 3
+    host: https://domain.com/api
+    secret: secret_key
+  - name: "chrome-2"
+    device_name: chrome
+    device_type: CHROME
+    system_id: 26830
+    security_level: 3
+    host: https://domain-2.com/api
+    secret: secret_key
+
+ 
 # Key Vaults store your obtained Content Encryption Keys (CEKs)
 # Use 'no_push: true' to prevent a vault from receiving pushed keys
 # while still allowing it to provide keys when requested
@@ -100,6 +133,12 @@ key_vaults:
   - type: SQLite
     name: Local
     path: key_store.db
+
+  - type: HTTPAPI
+    name: drmlab
+    host: http://api.drmlab.io/vault/
+    password: gEX75q7I5YVkvgF5SUkcNd41IbGrDtTT
+
   # Additional vault types:
   # - type: API
   #   name: "Remote Vault"
@@ -116,7 +155,7 @@ key_vaults:
   #   no_push: false  # Default behavior - vault both provides and receives keys
 
 # Choose what software to use to download data
-downloader: aria2c
+downloader: n_m3u8dl_re
 # Options: requests | aria2c | curl_impersonate | n_m3u8dl_re
 # Can also be a mapping:
 # downloader:
@@ -177,6 +216,7 @@ tmdb_api_key: ""
 # - subby: Always use subby with advanced processing
 # - pycaption: Use only pycaption library (no SubtitleEdit, no subby)
 # - subtitleedit: Prefer SubtitleEdit when available, fall back to pycaption
+# - pysubs2: Use pysubs2 library (supports SRT/SSA/ASS/WebVTT/TTML/SAMI/MicroDVD/MPL2/TMP)
 subtitle:
   conversion_method: auto
   sdh_method: auto

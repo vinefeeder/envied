@@ -181,7 +181,7 @@ class Tracks:
         log = logging.getLogger("Tracks")
 
         if duplicates:
-            log.warning(f" - Found and skipped {duplicates} duplicate tracks...")
+            log.debug(f" - Found and skipped {duplicates} duplicate tracks...")
 
     def sort_videos(self, by_language: Optional[Sequence[Union[str, Language]]] = None) -> None:
         """Sort video tracks by bitrate, and optionally language."""
@@ -202,17 +202,16 @@ class Tracks:
         """Sort audio tracks by bitrate, descriptive, and optionally language."""
         if not self.audio:
             return
-        # bitrate
-        self.audio.sort(key=lambda x: float(x.bitrate or 0.0), reverse=True)
         # descriptive
-        self.audio.sort(key=lambda x: str(x.language) if x.descriptive else "")
+        self.audio.sort(key=lambda x: x.descriptive)
+        # bitrate (within each descriptive group)
+        self.audio.sort(key=lambda x: float(x.bitrate or 0.0), reverse=True)
         # language
         for language in reversed(by_language or []):
             if str(language) in ("all", "best"):
                 language = next((x.language for x in self.audio if x.is_original_lang), "")
             if not language:
                 continue
-            self.audio.sort(key=lambda x: str(x.language))
             self.audio.sort(key=lambda x: not is_close_match(language, [x.language]))
 
     def sort_subtitles(self, by_language: Optional[Sequence[Union[str, Language]]] = None) -> None:
@@ -308,7 +307,14 @@ class Tracks:
             )
         return selected
 
-    def mux(self, title: str, delete: bool = True, progress: Optional[partial] = None) -> tuple[Path, int, list[str]]:
+    def mux(
+        self,
+        title: str,
+        delete: bool = True,
+        progress: Optional[partial] = None,
+        audio_expected: bool = True,
+        title_language: Optional[Language] = None,
+    ) -> tuple[Path, int, list[str]]:
         """
         Multiplex all the Tracks into a Matroska Container file.
 
@@ -318,7 +324,28 @@ class Tracks:
             delete: Delete all track files after multiplexing.
             progress: Update a rich progress bar via `completed=...`. This must be the
                 progress object's update() func, pre-set with task id via functools.partial.
+            audio_expected: Whether audio is expected in the output. Used to determine
+                if embedded audio metadata should be added.
+            title_language: The title's intended language. Used to select the best video track
+                for audio metadata when multiple video tracks exist.
         """
+        if self.videos and not self.audio and audio_expected:
+            video_track = None
+            if title_language:
+                video_track = next((v for v in self.videos if v.language == title_language), None)
+                if not video_track:
+                    video_track = next((v for v in self.videos if v.is_original_lang), None)
+
+            video_track = video_track or self.videos[0]
+            if video_track.language.is_valid():
+                lang_code = str(video_track.language)
+                lang_name = video_track.language.display_name()
+
+                for video in self.videos:
+                    video.needs_repack = True
+                    video.data["audio_language"] = lang_code
+                    video.data["audio_language_name"] = lang_name
+
         if not binaries.MKVToolNix:
             raise RuntimeError("MKVToolNix (mkvmerge) is required for muxing but was not found")
 
@@ -335,12 +362,20 @@ class Tracks:
                 raise ValueError("Video Track must be downloaded before muxing...")
             events.emit(events.Types.TRACK_MULTIPLEX, track=vt)
 
+            is_default = False
+            if title_language:
+                is_default = vt.language == title_language
+                if not any(v.language == title_language for v in self.videos):
+                    is_default = vt.is_original_lang or i == 0
+            else:
+                is_default = i == 0
+
             # Prepare base arguments
             video_args = [
                 "--language",
                 f"0:{vt.language}",
                 "--default-track",
-                f"0:{i == 0}",
+                f"0:{is_default}",
                 "--original-flag",
                 f"0:{vt.is_original_lang}",
                 "--compression",
@@ -363,6 +398,18 @@ class Tracks:
                     [
                         "--color-transfer-characteristics",
                         "0:18",  # ARIB STD-B67 (HLG)
+                    ]
+                )
+
+            if hasattr(vt, "data") and vt.data.get("audio_language"):
+                audio_lang = vt.data["audio_language"]
+                audio_name = vt.data.get("audio_language_name", audio_lang)
+                video_args.extend(
+                    [
+                        "--language",
+                        f"1:{audio_lang}",
+                        "--track-name",
+                        f"1:{audio_name}",
                     ]
                 )
 

@@ -7,7 +7,7 @@ name = "unshackle"
 version = "1.4.8"
 description = "Modular Movie, TV, and Music Archival Software."
 authors = [{ name = "unshackle team" }]
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.10,<3.14"
 readme = "README.md"
 license = "GPL-3.0-only"
 keywords = [
@@ -60,8 +60,7 @@ dependencies = [
     "subby",
     "webvtt-py>=0.5.1",
     "isodate>=0.7.2",
-    "beaupy>=3.10.2",
-    "mypy==1.18.2",
+    "beaupy>=3.10.2", 
     "pysubs2>=1.7.0,<2",
 ]
 
