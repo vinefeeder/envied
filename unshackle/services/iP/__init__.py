@@ -184,11 +184,18 @@ class iP(Service):
         if match:
             redux_data = json.loads(match.group(1))
             # Filter out audio-described versions
-            return [
-                {"pid": v.get("id")}
-                for v in redux_data.get("versions", {}).values()
-                if v.get("kind") != "audio-described" and v.get("id")
-            ]
+            try:
+                return [
+                    {"pid": v.get("id")}
+                    for v in redux_data.get("versions", {}).values()
+                    if v.get("kind") != "audio-described" and v.get("id")
+                ]
+            except:
+                return [
+                    {"pid": v.get("id")}
+                    for v in redux_data.get("versions", {})
+                    if v.get("kind") != "audio-described" and v.get("id")
+                ]
 
         return []
 
