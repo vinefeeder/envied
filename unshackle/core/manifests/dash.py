@@ -384,7 +384,7 @@ class DASH:
                 segment_duration = float(segment_template.get("duration")) or 1
 
                 if not end_number:
-                    end_number = math.ceil(period_duration / (segment_duration / segment_timescale))
+                    end_number = math.floor(period_duration / (segment_duration / segment_timescale))
 
                 for s in range(start_number, end_number + 1):
                     segments.append(

@@ -284,25 +284,25 @@ services:
         api_endpoint: "https://api.uk.service.com"
 
 # External proxy provider services
-proxy_providers:
-  nordvpn:
-    username: username_from_service_credentials
-    password: password_from_service_credentials
-    server_map:
-      us: 12 # force US server #12 for US proxies
-  surfsharkvpn:
-    username: your_surfshark_service_username # Service credentials from https://my.surfshark.com/vpn/manual-setup/main/openvpn
-    password: your_surfshark_service_password # Service credentials (not your login password)
-    server_map:
-      us: 3844 # force US server #3844 for US proxies
-      gb: 2697 # force GB server #2697 for GB proxies
-      au: 4621 # force AU server #4621 for AU proxies
-  basic:
-    GB:
-      - "socks5://username:password@bhx.socks.ipvanish.com:1080" # 1 (Birmingham)
-      - "socks5://username:password@gla.socks.ipvanish.com:1080" # 2 (Glasgow)
-    AU:
-      - "socks5://username:password@syd.socks.ipvanish.com:1080" # 1 (Sydney)
-      - "https://username:password@au-syd.prod.surfshark.com" # 2 (Sydney)
-      - "https://username:password@au-bne.prod.surfshark.com" # 3 (Brisbane)
-    BG: "https://username:password@bg-sof.prod.surfshark.com"
+# proxy_providers:
+#   nordvpn:
+#     username: username_from_service_credentials
+#     password: password_from_service_credentials
+#     server_map:
+#       us: 12 # force US server #12 for US proxies
+#   surfsharkvpn:
+#     username: your_surfshark_service_username # Service credentials from https://my.surfshark.com/vpn/manual-setup/main/openvpn
+#     password: your_surfshark_service_password # Service credentials (not your login password)
+#     server_map:
+#       us: 3844 # force US server #3844 for US proxies
+#       gb: 2697 # force GB server #2697 for GB proxies
+#       au: 4621 # force AU server #4621 for AU proxies
+#   basic:
+#     GB:
+#       - "socks5://username:password@bhx.socks.ipvanish.com:1080" # 1 (Birmingham)
+#       - "socks5://username:password@gla.socks.ipvanish.com:1080" # 2 (Glasgow)
+#     AU:
+#       - "socks5://username:password@syd.socks.ipvanish.com:1080" # 1 (Sydney)
+#       - "https://username:password@au-syd.prod.surfshark.com" # 2 (Sydney)
+#       - "https://username:password@au-bne.prod.surfshark.com" # 3 (Brisbane)
+#     BG: "https://username:password@bg-sof.prod.surfshark.com"
