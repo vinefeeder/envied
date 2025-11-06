@@ -62,6 +62,9 @@ dependencies = [
     "isodate>=0.7.2",
     "beaupy>=3.10.2", 
     "pysubs2>=1.7.0,<2",
+    "jwt>=1.4.0",
+    "langcodes>=3.5.0"
+
 ]
 
 [project.urls]

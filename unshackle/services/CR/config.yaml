@@ -1,0 +1,47 @@
+# Crunchyroll API Configuration
+client:
+  id: "lkesi7snsy9oojmi2r9h"
+  secret: "-aGDXFFNTluZMLYXERngNYnEjvgH5odv"
+
+# API Endpoints
+endpoints:
+  # Authentication
+  token: "https://www.crunchyroll.com/auth/v1/token"
+
+  # Account
+  account_me: "https://www.crunchyroll.com/accounts/v1/me"
+  multiprofile: "https://www.crunchyroll.com/accounts/v1/{account_id}/multiprofile"
+
+  # Content Metadata
+  series: "https://www.crunchyroll.com/content/v2/cms/series/{series_id}"
+  seasons: "https://www.crunchyroll.com/content/v2/cms/series/{series_id}/seasons"
+  season_episodes: "https://www.crunchyroll.com/content/v2/cms/seasons/{season_id}/episodes"
+  skip_events: "https://static.crunchyroll.com/skip-events/production/{episode_id}.json"
+
+  # Playback
+  playback: "https://www.crunchyroll.com/playback/v2/{episode_id}/tv/android_tv/play"
+  playback_delete: "https://www.crunchyroll.com/playback/v1/token/{episode_id}/{token}"
+  playback_sessions: "https://www.crunchyroll.com/playback/v1/sessions/streaming"
+  license_widevine: "https://cr-license-proxy.prd.crunchyrollsvc.com/v1/license/widevine"
+
+  # Discovery
+  search: "https://www.crunchyroll.com/content/v2/discover/search"
+
+# Headers for Android TV client
+headers:
+  user-agent: "Crunchyroll/ANDROIDTV/3.49.1_22281 (Android 11; en-US; SHIELD Android TV)"
+  accept: "application/json"
+  accept-charset: "UTF-8"
+  accept-encoding: "gzip"
+  connection: "Keep-Alive"
+  content-type: "application/x-www-form-urlencoded; charset=UTF-8"
+
+# Query parameters
+params:
+  locale: "en-US"
+
+# Device parameters for authentication
+device:
+  type: "ANDROIDTV"
+  name: "SHIELD Android TV"
+  model: "SHIELD Android TV"
