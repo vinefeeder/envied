@@ -9,25 +9,13 @@ from urllib.parse import quote, urljoin
 
 import click
 from click import Context
-
-try:
-    from devine.core.manifests import DASH  # type: ignore
-    from devine.core.search_result import SearchResult  # type: ignore
-    from devine.core.service import Service  # type: ignore
-    from devine.core.titles import Episode, Movie, Movies, Series  # type: ignore
-    from devine.core.tracks import Chapter, Chapters, Tracks  # type: ignore
-except ImportError:
-    try:
-        from unshackle.core.manifests import DASH
-        from unshackle.core.search_result import SearchResult
-        from unshackle.core.service import Service
-        from unshackle.core.titles import Episode, Movie, Movies, Series
-        from unshackle.core.tracks import Chapter, Chapters, Tracks
-    except ImportError:
-        raise ImportError("CWTV service requires devine or unshackle to be installed")
-
 from lxml import etree
 from requests import Request
+from unshackle.core.manifests import DASH
+from unshackle.core.search_result import SearchResult
+from unshackle.core.service import Service
+from unshackle.core.titles import Episode, Movie, Movies, Series
+from unshackle.core.tracks import Chapter, Chapters, Tracks
 
 
 class CWTV(Service):
@@ -36,7 +24,7 @@ class CWTV(Service):
     Service code for CWTV streaming service (https://www.cwtv.com/).
 
     \b
-    Version: 1.0.0
+    Version: 1.0.1
     Author: stabbedbybrick
     Authorization: None
     Geofence: US (API and downloads)

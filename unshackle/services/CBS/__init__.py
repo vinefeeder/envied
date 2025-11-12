@@ -8,6 +8,7 @@ from typing import Any, Optional, Union
 from urllib.parse import urljoin
 
 import click
+from requests import Request
 from unshackle.core.constants import AnyTrack
 from unshackle.core.manifests import DASH
 from unshackle.core.search_result import SearchResult
@@ -16,7 +17,6 @@ from unshackle.core.titles import Episode, Series, Title_T, Titles_T
 from unshackle.core.tracks import Chapter, Chapters, Tracks
 from unshackle.core.utils.sslciphers import SSLCiphers
 from unshackle.core.utils.xml import load_xml
-from requests import Request
 
 
 class CBS(Service):
@@ -26,7 +26,7 @@ class CBS(Service):
     Credit to @srpen6 for the tip on anonymous session
 
     \b
-    Version: 1.0.0
+    Version: 1.0.1
     Author: stabbedbybrick
     Authorization: None
     Robustness:

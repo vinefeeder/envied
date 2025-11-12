@@ -10,7 +10,6 @@ from urllib.parse import unquote, urlparse
 
 import click
 import requests
-
 from unshackle.core.credential import Credential
 from unshackle.core.manifests import DASH
 from unshackle.core.search_result import SearchResult
@@ -24,7 +23,7 @@ class ROKU(Service):
     Service code for The Roku Channel (https://therokuchannel.roku.com)
 
     \b
-    Version: 1.0.1
+    Version: 1.0.2
     Author: stabbedbybrick
     Authorization: Cookies
     Robustness:

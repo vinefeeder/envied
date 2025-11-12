@@ -31,7 +31,7 @@ class iP(Service):
     Service code for the BBC iPlayer streaming service (https://www.bbc.co.uk/iplayer).
 
     \b
-    Version: 1.0.1
+    Version: 1.0.2
     Author: stabbedbybrick
     Authorization: None
     Security: None
@@ -177,25 +177,20 @@ class iP(Service):
             return versions
 
         # Fallback to scraping webpage if API returns no versions
-        self.log.info("No versions in playlist API, falling back to webpage scrape.")
+        self.log.debug("No versions in playlist API, falling back to webpage scrape.")
         r = self.session.get(self.config["base_url"].format(type="episode", pid=pid))
         r.raise_for_status()
         match = re.search(r"window\.__IPLAYER_REDUX_STATE__\s*=\s*(.*?);\s*</script>", r.text)
         if match:
             redux_data = json.loads(match.group(1))
+            redux_versions = redux_data.get("versions")
+            versions = redux_versions.values() if isinstance(redux_versions, dict) else redux_versions
             # Filter out audio-described versions
-            try:
-                return [
-                    {"pid": v.get("id")}
-                    for v in redux_data.get("versions", {}).values()
-                    if v.get("kind") != "audio-described" and v.get("id")
-                ]
-            except:
-                return [
-                    {"pid": v.get("id")}
-                    for v in redux_data.get("versions", {})
-                    if v.get("kind") != "audio-described" and v.get("id")
-                ]
+            return [
+                {"pid": v.get("id")}
+                for v in versions
+                if v.get("kind") != "audio-described" and v.get("id")
+            ]
 
         return []
 

@@ -9,13 +9,13 @@ from collections.abc import Generator
 from typing import Any
 
 import click
+from langcodes import Language
 from unshackle.core.downloaders import aria2c, requests
 from unshackle.core.manifests import DASH
 from unshackle.core.search_result import SearchResult
 from unshackle.core.service import Service
 from unshackle.core.titles import Episode, Movie, Movies, Series, Title_T, Titles_T
 from unshackle.core.tracks import Chapter, Chapters, Subtitle, Track, Tracks
-from langcodes import Language
 
 
 class TUBI(Service):
@@ -23,7 +23,7 @@ class TUBI(Service):
     Service code for TubiTV streaming service (https://tubitv.com/)
 
     \b
-    Version: 1.0.1
+    Version: 1.0.3
     Author: stabbedbybrick
     Authorization: None
     Robustness:
@@ -69,7 +69,7 @@ class TUBI(Service):
     #     r = self.session.get(self.config["endpoints"]["search"], params=params)
     #     r.raise_for_status()
     #     results = r.json()
-    #     from unshackle.core.console import console
+    #     from devine.core.console import console
     #     console.print(results)
     #     exit()
 
@@ -214,16 +214,21 @@ class TUBI(Service):
         return tracks
 
     def get_chapters(self, title: Title_T) -> Chapters:
-        cue_points = title.data.get("credit_cuepoints")
-        if not cue_points:
+        if not (cue_points := title.data.get("credit_cuepoints")):
             return Chapters()
         
         chapters = []
-        for title, cuepoint in cue_points.items():
-            if cuepoint > 0:
-                chapters.append(Chapter(timestamp=float(cuepoint), name=title))
+        if cue_points.get("recap_start"):
+            chapters.append(Chapter(name="Recap", timestamp=float(cue_points["recap_start"])))
+        if cue_points.get("intro_start") and cue_points.get("intro_end"):
+            chapters.append(Chapter(name="Intro", timestamp=float(cue_points["intro_start"])))
+            chapters.append(Chapter(timestamp=float(cue_points["intro_end"])))
+        if cue_points.get("early_credits_start"):
+            chapters.append(Chapter(name="Early Credits", timestamp=float(cue_points["early_credits_start"])))
+        if cue_points.get("postlude"):
+            chapters.append(Chapter(name="End Credits", timestamp=float(cue_points["postlude"])))
 
-        return Chapters(chapters)
+        return sorted(chapters, key=lambda x: x.timestamp)
 
     def get_widevine_service_certificate(self, **_: Any) -> str:
         return None

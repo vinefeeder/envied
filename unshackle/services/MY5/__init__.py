@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import base64
+import os
 import re
 import tempfile
-import os
 from collections.abc import Generator
 from typing import Any, Union
 from urllib.parse import urlparse, urlunparse
@@ -11,13 +11,13 @@ from urllib.parse import urlparse, urlunparse
 import click
 import requests
 from click import Context
+from pywidevine.cdm import Cdm as WidevineCdm
 from unshackle.core.manifests.dash import DASH
 from unshackle.core.search_result import SearchResult
 from unshackle.core.service import Service
 from unshackle.core.titles import Episode, Movie, Movies, Series
 from unshackle.core.tracks import Chapter, Tracks
 from unshackle.core.utils.sslciphers import SSLCiphers
-from pywidevine.cdm import Cdm as WidevineCdm
 
 
 class MY5(Service):
@@ -26,7 +26,7 @@ class MY5(Service):
     Service code for Channel 5's My5 streaming service (https://channel5.com).
 
     \b
-    Version: 1.0.0
+    Version: 1.0.1
     Author: stabbedbybrick
     Authorization: None
     Robustness:
@@ -40,7 +40,7 @@ class MY5(Service):
     \b
     Known bugs:
         - The progress bar is broken for certain DASH manifests
-          See issue: https://github.com/unshackle-dl/unshackle/issues/106
+          See issue: https://github.com/devine-dl/devine/issues/106
 
     """
 
@@ -148,10 +148,10 @@ class MY5(Service):
 
         tracks = DASH.from_url(self.manifest, self.session).to_tracks(title.language)
 
-        '''for track in tracks.audio:
+        for track in tracks.audio:
             role = track.data["dash"]["representation"].find("Role")
             if role is not None and role.get("value") in ["description", "alternative", "alternate"]:
-                track.descriptive = True'''
+                track.descriptive = True
 
         return tracks
 

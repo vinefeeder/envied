@@ -51,7 +51,7 @@ class TPTV(Service):
         TPTV will not allow the usual -w S01-S04 syntax as TPTV is eclictic in what it serves. 
         Series and episodes carry little meaning on this platform.
 
-        It is not possible to remove S00E00 from the end of a video title - unshackle insists.
+        It is not possible to remove S00E00 from the end of a video title - envied insists.
 
     \b
     Tips:
@@ -87,7 +87,7 @@ class TPTV(Service):
         self.profile = ctx.parent.params.get("profile")
         if not self.profile:
             self.profile = "default"
-
+        self.session = requests.session()
         self.session.headers.update(self.config["headers"])
 
     def authenticate(self, cookies: Optional[MozillaCookieJar] = None, credential: Optional[Credential] = None) -> None:
@@ -147,7 +147,7 @@ class TPTV(Service):
             tokens = res
             self.log.info(" + Acquired tokens...")
 
-        cache.set(tokens)
+        # cache.set(tokens)
 
         self.authorization = tokens
 

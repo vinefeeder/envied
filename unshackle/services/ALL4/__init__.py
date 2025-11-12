@@ -3,8 +3,8 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import sys
 import re
+import sys
 from collections.abc import Generator
 from datetime import datetime, timezone
 from http.cookiejar import MozillaCookieJar
@@ -15,13 +15,11 @@ from click import Context
 from Crypto.Util.Padding import unpad
 from Cryptodome.Cipher import AES
 from pywidevine.cdm import Cdm as WidevineCdm
-
-from unshackle.core.constants import AnyTrack
 from unshackle.core.credential import Credential
-from unshackle.core.manifests import DASH
+from unshackle.core.manifests.dash import DASH
 from unshackle.core.search_result import SearchResult
 from unshackle.core.service import Service
-from unshackle.core.titles import Episode, Movie, Movies, Series, Title_T, Titles_T
+from unshackle.core.titles import Episode, Movie, Movies, Series
 from unshackle.core.tracks import Chapter, Subtitle, Tracks
 
 
@@ -30,7 +28,7 @@ class ALL4(Service):
     Service code for Channel 4's All4 streaming service (https://channel4.com).
 
     \b
-    Version: 1.0.0
+    Version: 1.0.1
     Author: stabbedbybrick
     Authorization: Credentials
     Robustness:
@@ -262,6 +260,11 @@ class ALL4(Service):
             )
         else:
             self.log.warning("- Subtitles are either missing or empty")
+
+        for track in tracks.audio:
+            role = track.data["dash"]["representation"].find("Role")
+            if role is not None and role.get("value") in ["description", "alternative", "alternate"]:
+                track.descriptive = True
 
         return tracks
 

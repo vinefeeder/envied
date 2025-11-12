@@ -24,7 +24,7 @@ class ITV(Service):
     Service code for ITVx streaming service (https://www.itv.com/).
 
     \b
-    Version: 1.0.1
+    Version: 1.0.2
     Author: stabbedbybrick
     Authorization: Cookies (Optional for free content | Required for premium content)
     Robustness:
@@ -41,9 +41,9 @@ class ITV(Service):
 
     \b
     Examples:
-        - SERIES: unshackle dl -w s01e01 itv https://www.itv.com/watch/bay-of-fires/10a5270
-        - EPISODE: unshackle dl itv https://www.itv.com/watch/bay-of-fires/10a5270/10a5270a0001
-        - FILM: unshackle dl itv https://www.itv.com/watch/mad-max-beyond-thunderdome/2a7095
+        - SERIES: devine dl -w s01e01 itv https://www.itv.com/watch/bay-of-fires/10a5270
+        - EPISODE: devine dl itv https://www.itv.com/watch/bay-of-fires/10a5270/10a5270a0001
+        - FILM: devine dl itv https://www.itv.com/watch/mad-max-beyond-thunderdome/2a7095
 
     \b
     Notes:
@@ -301,10 +301,10 @@ class ITV(Service):
                     )
                 )
 
-        '''for track in tracks.audio:
+        for track in tracks.audio:
             role = track.data["dash"]["representation"].find("Role")
             if role is not None and role.get("value") in ["description", "alternative", "alternate"]:
-                track.descriptive = True'''
+                track.descriptive = True
 
         return tracks
 

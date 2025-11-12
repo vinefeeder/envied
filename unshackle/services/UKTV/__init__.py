@@ -7,12 +7,12 @@ from typing import Any, Union
 
 import click
 from click import Context
+from lxml import etree
 from unshackle.core.manifests.dash import DASH
 from unshackle.core.search_result import SearchResult
 from unshackle.core.service import Service
 from unshackle.core.titles import Episode, Movie, Movies, Series
 from unshackle.core.tracks import Chapter, Chapters, Tracks
-from lxml import etree
 
 
 class UKTV(Service):
@@ -20,7 +20,7 @@ class UKTV(Service):
     Service code for 'U' (formerly UKTV Play) streaming service (https://u.co.uk/).
 
     \b
-    Version: 1.0.0
+    Version: 1.0.1
     Author: stabbedbybrick
     Authorization: None
     Robustness:

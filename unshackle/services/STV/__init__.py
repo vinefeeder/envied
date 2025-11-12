@@ -8,12 +8,12 @@ from urllib.parse import urlparse
 
 import click
 from click import Context
+from lxml import etree
 from unshackle.core.manifests.dash import DASH
 from unshackle.core.search_result import SearchResult
 from unshackle.core.service import Service
 from unshackle.core.titles import Episode, Movie, Movies, Series
 from unshackle.core.tracks import Chapter, Chapters, Tracks
-from lxml import etree
 
 
 class STV(Service):
@@ -21,7 +21,7 @@ class STV(Service):
     Service code for STV Player streaming service (https://player.stv.tv/).
 
     \b
-    Version: 1.0.0
+    Version: 1.0.1
     Author: stabbedbybrick
     Authorization: None
     Robustness:
@@ -108,7 +108,7 @@ class STV(Service):
                     if episode.get("playerSeries") and re.match(r"Series \d+", episode["playerSeries"]["name"])
                     else 0,
                     number=int(episode.get("number", 0)),
-                    name=episode.get("title"),
+                    name=episode.get("title", "").lstrip("0123456789. ").lstrip(),
                     language="en",
                     data=episode,
                 )
@@ -128,10 +128,11 @@ class STV(Service):
                     service=self.__class__,
                     title=data["results"].get("name"),
                     season=int(episode["playerSeries"]["name"].split(" ")[1])
-                    if episode.get("playerSeries") and re.match(r"Series \d+", episode["playerSeries"]["name"])
+                    if episode.get("playerSeries")
+                    and re.match(r"Series \d+", episode["playerSeries"]["name"])
                     else 0,
                     number=int(episode.get("number", 0)),
-                    name=episode.get("title"),
+                    name=episode.get("title", "").lstrip("0123456789. ").lstrip(),
                     language="en",
                     data=episode,
                 )
@@ -166,19 +167,19 @@ class STV(Service):
                 source
                 for source in data["sources"]
                 if source.get("type") == "application/dash+xml"
-                and source.get("key_systems").get("com.wiunshackle.alpha")),
+                and source.get("key_systems").get("com.widevine.alpha")),
                 None,
             )
 
-            self.license = key_systems["key_systems"]["com.wiunshackle.alpha"]["license_url"] if key_systems else None
+            self.license = key_systems["key_systems"]["com.widevine.alpha"]["license_url"] if key_systems else None
 
         manifest = self.trim_duration(source_manifest)
         tracks = DASH.from_text(manifest, source_manifest).to_tracks(title.language)
 
-        '''for track in tracks.audio:
+        for track in tracks.audio:
             role = track.data["dash"]["representation"].find("Role")
             if role is not None and role.get("value") in ["description", "alternative", "alternate"]:
-                track.descriptive = True'''
+                track.descriptive = True
 
         return tracks
 

@@ -8,6 +8,7 @@ from typing import Any, Optional, Union
 from urllib.parse import urljoin
 
 import click
+from requests import Request
 from unshackle.core.constants import AnyTrack
 from unshackle.core.manifests import DASH
 from unshackle.core.search_result import SearchResult
@@ -15,7 +16,6 @@ from unshackle.core.service import Service
 from unshackle.core.titles import Episode, Movie, Movies, Series, Title_T, Titles_T
 from unshackle.core.tracks import Chapter, Chapters, Tracks
 from unshackle.core.utils.xml import load_xml
-from requests import Request
 
 
 class RTE(Service):
@@ -24,7 +24,7 @@ class RTE(Service):
     Service code for RTE Player streaming service (https://www.rte.ie/player/).
 
     \b
-    Version: 1.0.0
+    Version: 1.0.1
     Author: stabbedbybrick
     Authorization: None
     Robustness:
@@ -34,7 +34,6 @@ class RTE(Service):
     \b
     Tips:
         - Input (pay attention to the URL format):
-          
           SERIES: https://www.rte.ie/player/series/crossfire/10003928-00-0000
           EPISODE: https://www.rte.ie/player/series/crossfire/10003928-00-0000?epguid=AQ10003929-01-0001
           MOVIE: https://www.rte.ie/player/movie/glass/360230440380
@@ -46,7 +45,7 @@ class RTE(Service):
 
     """
 
-    #GEOFENCE = ("ie",)
+    # GEOFENCE = ("ie",)
 
     @staticmethod
     @click.command(name="RTE", short_help="https://www.rte.ie/player/", help=__doc__)
@@ -188,7 +187,6 @@ class RTE(Service):
         ]
 
     def _show(self, title: str) -> Episode:
-        # http://data.entertainment.tv.theplatform.eu/entertainment/data/ProgramAvailability/76573736378
         entry = self._request("/mpx/1uC-gC/rte-prd-prd-all-movies-series?byGuid={}".format(title))["entries"][0]["id"]
         data = self._request("/mpx/1uC-gC/rte-prd-prd-all-programs?bySeriesId={}".format(entry.split("/")[-1]))["entries"]
 

@@ -7,7 +7,6 @@ from http.cookiejar import CookieJar
 from typing import Any, Optional
 
 import click
-
 from unshackle.core.credential import Credential
 from unshackle.core.manifests import DASH, HLS
 from unshackle.core.search_result import SearchResult
@@ -23,7 +22,7 @@ class PLUTO(Service):
     Credit to @wks_uwu for providing an alternative API, making the codebase much cleaner
 
     \b
-    Version: 1.0.1
+    Version: 1.0.2
     Author: stabbedbybrick
     Authorization: None
     Robustness:
@@ -38,7 +37,7 @@ class PLUTO(Service):
            MOVIE: /movies/635c1e430888bc001ad01a9b/details
         - Use --lang LANG_RANGE option to request non-English tracks
         - Use --hls to request HLS instead of DASH:
-           unshackle dl pluto URL --hls
+           devine dl pluto URL --hls
 
     \b
     Notes:

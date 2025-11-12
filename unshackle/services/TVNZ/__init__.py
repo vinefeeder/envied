@@ -9,15 +9,15 @@ from urllib.parse import urljoin, urlparse
 
 import click
 from click import Context
+from lxml import etree
+from pywidevine.cdm import Cdm as WidevineCdm
+from requests import Request
 from unshackle.core.credential import Credential
 from unshackle.core.manifests.dash import DASH
 from unshackle.core.search_result import SearchResult
 from unshackle.core.service import Service
 from unshackle.core.titles import Episode, Movie, Movies, Series
 from unshackle.core.tracks import Chapters, Tracks
-from lxml import etree
-from pywidevine.cdm import Cdm as WidevineCdm
-from requests import Request
 
 
 class TVNZ(Service):
@@ -26,7 +26,7 @@ class TVNZ(Service):
     Service code for TVNZ streaming service (https://www.tvnz.co.nz).
 
     \b
-    Version: 1.0.0
+    Version: 1.0.2
     Author: stabbedbybrick
     Authorization: Credentials
     Robustness:
@@ -104,6 +104,9 @@ class TVNZ(Service):
 
         self.session.headers.update({"Authorization": "Bearer {}".format(tokens["access_token"])})
 
+        # Disable SSL verification due to issues with newer versions of requests library.
+        self.session.verify = False
+
     def get_titles(self) -> Union[Movies, Series]:
         try:
             path = urlparse(self.title).path
@@ -172,14 +175,14 @@ class TVNZ(Service):
             )
 
             self.license = next((
-                x["key_systems"]["com.wiunshackle.alpha"]["license_url"]
+                x["key_systems"]["com.widevine.alpha"]["license_url"]
                 for x in data["sources"]
-                if x.get("key_systems").get("com.wiunshackle.alpha")),
+                if x.get("key_systems").get("com.widevine.alpha")),
                 None,
             )
             source_manifest = next((
                 x["src"] for x in data["sources"]
-                if x.get("key_systems").get("com.wiunshackle.alpha")),
+                if x.get("key_systems").get("com.widevine.alpha")),
                 None,
             )
 
