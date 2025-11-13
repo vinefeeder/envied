@@ -74,7 +74,9 @@ class Vaults:
         for vault in self.vaults:
             if not vault.no_push:
                 try:
-                    success += bool(vault.add_keys(self.service, kid_keys))
+                    # Count each vault that successfully processes the keys (whether new or existing)
+                    vault.add_keys(self.service, kid_keys)
+                    success += 1
                 except (PermissionError, NotImplementedError):
                     pass
         return success

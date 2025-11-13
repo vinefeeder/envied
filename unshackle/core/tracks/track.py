@@ -13,6 +13,7 @@ from typing import Any, Callable, Iterable, Optional, Union
 from uuid import UUID
 from zlib import crc32
 
+from curl_cffi.requests import Session as CurlSession
 from langcodes import Language
 from pyplayready.cdm import Cdm as PlayReadyCdm
 from pywidevine.cdm import Cdm as WidevineCdm
@@ -24,7 +25,7 @@ from unshackle.core.constants import DOWNLOAD_CANCELLED, DOWNLOAD_LICENCE_ONLY
 from unshackle.core.downloaders import aria2c, curl_impersonate, n_m3u8dl_re, requests
 from unshackle.core.drm import DRM_T, PlayReady, Widevine
 from unshackle.core.events import events
-from unshackle.core.utilities import get_boxes, try_ensure_utf8
+from unshackle.core.utilities import get_boxes, get_extension, try_ensure_utf8
 from unshackle.core.utils.subprocess import ffprobe
 
 
@@ -46,6 +47,8 @@ class Track:
         drm: Optional[Iterable[DRM_T]] = None,
         edition: Optional[str] = None,
         downloader: Optional[Callable] = None,
+        downloader_args: Optional[dict] = None,
+        from_file: Optional[Path] = None,
         data: Optional[Union[dict, defaultdict]] = None,
         id_: Optional[str] = None,
         extra: Optional[Any] = None,
@@ -68,6 +71,10 @@ class Track:
             raise TypeError(f"Expected edition to be a {str}, not {type(edition)}")
         if not isinstance(downloader, (Callable, type(None))):
             raise TypeError(f"Expected downloader to be a {Callable}, not {type(downloader)}")
+        if not isinstance(downloader_args, (dict, type(None))):
+            raise TypeError(f"Expected downloader_args to be a {dict}, not {type(downloader_args)}")
+        if not isinstance(from_file, (Path, type(None))):
+            raise TypeError(f"Expected from_file to be a {Path}, not {type(from_file)}")
         if not isinstance(data, (dict, defaultdict, type(None))):
             raise TypeError(f"Expected data to be a {dict} or {defaultdict}, not {type(data)}")
 
@@ -99,6 +106,8 @@ class Track:
         self.drm = drm
         self.edition: str = edition
         self.downloader = downloader
+        self.downloader_args = downloader_args
+        self.from_file = from_file
         self._data: defaultdict[Any, Any] = defaultdict(dict)
         self.data = data or {}
         self.extra: Any = extra or {}  # allow anything for extra, but default to a dict
@@ -202,7 +211,21 @@ class Track:
         save_path = config.directories.temp / f"{track_type}_{self.id}.mp4"
         if track_type == "Subtitle":
             save_path = save_path.with_suffix(f".{self.codec.extension}")
-            if self.downloader.__name__ == "n_m3u8dl_re":
+            # n_m3u8dl_re doesn't support directly downloading subtitles from URLs
+            # or when the subtitle has a direct file extension
+            if self.downloader.__name__ == "n_m3u8dl_re" and (
+                self.descriptor == self.Descriptor.URL
+                or get_extension(self.url) in {
+                    ".srt",
+                    ".vtt",
+                    ".ttml",
+                    ".ssa",
+                    ".ass",
+                    ".stpp",
+                    ".wvtt",
+                    ".xml",
+                }
+            ):
                 self.downloader = requests
 
         if self.descriptor != self.Descriptor.URL:
@@ -420,7 +443,7 @@ class Track:
             for drm in self.drm:
                 if isinstance(drm, PlayReady):
                     return drm
-        elif hasattr(cdm, 'is_playready'):
+        elif hasattr(cdm, "is_playready"):
             if cdm.is_playready:
                 for drm in self.drm:
                     if isinstance(drm, PlayReady):
@@ -473,6 +496,83 @@ class Track:
                 if tenc.key_ID.int != 0:
                     return tenc.key_ID
 
+    def load_drm_if_needed(self, service=None) -> bool:
+        """
+        Load DRM information for this track if it was deferred during parsing.
+
+        Args:
+            service: Service instance that can fetch track-specific DRM info
+
+        Returns:
+            True if DRM was loaded or already present, False if failed
+        """
+        if not getattr(self, "needs_drm_loading", False):
+            return bool(self.drm)
+
+        if self.drm:
+            self.needs_drm_loading = False
+            return True
+
+        if not service or not hasattr(service, "get_track_drm"):
+            return self.load_drm_from_playlist()
+
+        try:
+            track_drm = service.get_track_drm(self)
+            if track_drm:
+                self.drm = track_drm if isinstance(track_drm, list) else [track_drm]
+                self.needs_drm_loading = False
+                return True
+        except Exception as e:
+            raise ValueError(f"Failed to load DRM from service for track {self.id}: {e}")
+
+        return self.load_drm_from_playlist()
+
+    def load_drm_from_playlist(self) -> bool:
+        """
+        Fallback method to load DRM by fetching this track's individual playlist.
+        """
+        if self.drm:
+            self.needs_drm_loading = False
+            return True
+
+        try:
+            import m3u8
+            from pyplayready.cdm import Cdm as PlayReadyCdm
+            from pyplayready.system.pssh import PSSH as PR_PSSH
+            from pywidevine.cdm import Cdm as WidevineCdm
+            from pywidevine.pssh import PSSH as WV_PSSH
+
+            session = getattr(self, "session", None) or Session()
+
+            response = session.get(self.url)
+            playlist = m3u8.loads(response.text, self.url)
+
+            drm_list = []
+
+            for key in playlist.keys or []:
+                if not key or not key.keyformat:
+                    continue
+
+                fmt = key.keyformat.lower()
+                if fmt == WidevineCdm.urn:
+                    pssh_b64 = key.uri.split(",")[-1]
+                    drm = Widevine(pssh=WV_PSSH(pssh_b64))
+                    drm_list.append(drm)
+                elif fmt == PlayReadyCdm or "com.microsoft.playready" in fmt:
+                    pssh_b64 = key.uri.split(",")[-1]
+                    drm = PlayReady(pssh=PR_PSSH(pssh_b64), pssh_b64=pssh_b64)
+                    drm_list.append(drm)
+
+            if drm_list:
+                self.drm = drm_list
+                self.needs_drm_loading = False
+                return True
+
+        except Exception as e:
+            raise ValueError(f"Failed to load DRM from playlist for track {self.id}: {e}")
+
+        return False
+
     def get_init_segment(
         self,
         maximum_size: int = 20000,
@@ -508,8 +608,8 @@ class Track:
             raise TypeError(f"Expected url to be a {str}, not {type(url)}")
         if not isinstance(byte_range, (str, type(None))):
             raise TypeError(f"Expected byte_range to be a {str}, not {type(byte_range)}")
-        if not isinstance(session, (Session, type(None))):
-            raise TypeError(f"Expected session to be a {Session}, not {type(session)}")
+        if not isinstance(session, (Session, CurlSession, type(None))):
+            raise TypeError(f"Expected session to be a {Session} or {CurlSession}, not {type(session)}")
 
         if not url:
             if self.descriptor != self.Descriptor.URL:
@@ -567,15 +667,32 @@ class Track:
         output_path = original_path.with_stem(f"{original_path.stem}_repack")
 
         def _ffmpeg(extra_args: list[str] = None):
-            subprocess.run(
+            args = [
+                binaries.FFMPEG,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-i",
+                original_path,
+                *(extra_args or []),
+            ]
+
+            if hasattr(self, "data") and self.data.get("audio_language"):
+                audio_lang = self.data["audio_language"]
+                audio_name = self.data.get("audio_language_name", audio_lang)
+                args.extend(
+                    [
+                        "-metadata:s:a:0",
+                        f"language={audio_lang}",
+                        "-metadata:s:a:0",
+                        f"title={audio_name}",
+                        "-metadata:s:a:0",
+                        f"handler_name={audio_name}",
+                    ]
+                )
+
+            args.extend(
                 [
-                    binaries.FFMPEG,
-                    "-hide_banner",
-                    "-loglevel",
-                    "error",
-                    "-i",
-                    original_path,
-                    *(extra_args or []),
                     # Following are very important!
                     "-map_metadata",
                     "-1",  # don't transfer metadata to output file
@@ -584,7 +701,11 @@ class Track:
                     "-codec",
                     "copy",
                     str(output_path),
-                ],
+                ]
+            )
+
+            subprocess.run(
+                args,
                 check=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,

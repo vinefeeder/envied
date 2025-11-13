@@ -254,7 +254,7 @@ class DASH:
         if not session:
             session = Session()
         elif not isinstance(session, (Session, CurlSession)):
-            raise TypeError(f"Expected session to be a {Session}, not {session!r}")
+            raise TypeError(f"Expected session to be a {Session} or {CurlSession}, not {session!r}")
 
         if proxy:
             session.proxies.update({"all": proxy})
@@ -384,7 +384,8 @@ class DASH:
                 segment_duration = float(segment_template.get("duration")) or 1
 
                 if not end_number:
-                    end_number = math.floor(period_duration / (segment_duration / segment_timescale))
+                    segment_count = math.ceil(period_duration / (segment_duration / segment_timescale))
+                    end_number = start_number + segment_count - 1
 
                 for s in range(start_number, end_number + 1):
                     segments.append(

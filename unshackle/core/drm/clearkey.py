@@ -5,6 +5,7 @@ import shutil
 from pathlib import Path
 from typing import Optional, Union
 from urllib.parse import urljoin
+
 from Cryptodome.Cipher import AES
 from Cryptodome.Util.Padding import unpad
 from curl_cffi.requests import Session as CurlSession

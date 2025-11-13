@@ -167,13 +167,6 @@ class ComfyConsole(Console):
             time.monotonic.
     """
 
-    _instance: Optional["ComfyConsole"] = None
-
-    def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance 
-
     def __init__(
         self,
         *,
@@ -207,10 +200,6 @@ class ComfyConsole(Console):
         _environ: Optional[Mapping[str, str]] = None,
         log_renderer: Optional[LogRender] = None,
     ):
-        # prevent re-initialisation on repeated calls
-        if getattr(self, "_initialized", False):
-            return
-        
         super().__init__(
             color_system=color_system,
             force_terminal=force_terminal,
@@ -243,7 +232,6 @@ class ComfyConsole(Console):
         )
         if log_renderer:
             self._log_render = log_renderer
-        self._initialized = True
 
     def status(
         self,

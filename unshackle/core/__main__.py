@@ -1,10 +1,5 @@
 import atexit
 import logging
-import warnings
-from pathlib import Path
-
-# Suppress SyntaxWarning from unmaintained tinycss package (dependency of subby)
-warnings.filterwarnings("ignore", category=SyntaxWarning, module="tinycss")
 
 import click
 import urllib3
@@ -19,23 +14,17 @@ from unshackle.core.commands import Commands
 from unshackle.core.config import config
 from unshackle.core.console import ComfyRichHandler, console
 from unshackle.core.constants import context_settings
-from unshackle.core.utilities import rotate_log_file
-
-LOGGING_PATH = None
+from unshackle.core.update_checker import UpdateChecker
+from unshackle.core.utilities import close_debug_logger, init_debug_logger
 
 
 @click.command(cls=Commands, invoke_without_command=True, context_settings=context_settings)
 @click.option("-v", "--version", is_flag=True, default=False, help="Print version information.")
-@click.option("-d", "--debug", is_flag=True, default=False, help="Enable DEBUG level logs.")
-@click.option(
-    "--log",
-    "log_path",
-    type=Path,
-    default=config.directories.logs / config.filenames.log,
-    help="Log path (or filename). Path can contain the following f-string args: {name} {time}.",
-)
-def main(version: bool, debug: bool, log_path: Path) -> None:
-    """envied—Modular Movie, TV, and Music Archival Software."""
+@click.option("-d", "--debug", is_flag=True, default=False, help="Enable DEBUG level logs and JSON debug logging.")
+def main(version: bool, debug: bool) -> None:
+    """unshackle—Modular Movie, TV, and Music Archival Software."""
+    debug_logging_enabled = debug or config.debug
+
     logging.basicConfig(
         level=logging.DEBUG if debug else logging.INFO,
         format="%(message)s",
@@ -51,11 +40,8 @@ def main(version: bool, debug: bool, log_path: Path) -> None:
         ],
     )
 
-    if log_path:
-        global LOGGING_PATH
-        console.record = True
-        new_log_path = rotate_log_file(log_path)
-        LOGGING_PATH = new_log_path
+    if debug_logging_enabled:
+        init_debug_logger(enabled=True)
 
     urllib3.disable_warnings(InsecureRequestWarning)
 
@@ -77,13 +63,15 @@ def main(version: bool, debug: bool, log_path: Path) -> None:
         expand=True,
     ),
     justify="center",
-)
-    
+    )
+
+
+
+
 @atexit.register
-def save_log():
-    if console.record and LOGGING_PATH:
-        # TODO: Currently semi-bust. Everything that refreshes gets duplicated.
-        console.save_text(LOGGING_PATH)
+def cleanup():
+    """Clean up resources on exit."""
+    close_debug_logger()
 
 
 if __name__ == "__main__":

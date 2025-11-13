@@ -60,11 +60,12 @@ dependencies = [
     "subby",
     "webvtt-py>=0.5.1",
     "isodate>=0.7.2",
-    "beaupy>=3.10.2", 
+    "beaupy>=3.10.2",
     "pysubs2>=1.7.0,<2",
     "jwt>=1.4.0",
-    "langcodes>=3.5.0"
-
+    "langcodes>=3.5.0",
+    "fonttools>=4.60.1",
+    "aiohttp-swagger3>=0.10.0",
 ]
 
 [project.urls]
