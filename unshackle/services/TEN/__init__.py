@@ -36,7 +36,7 @@ class TEN(Service):
     Service code for 10Play streaming service (https://10.com.au/).
 
     \b
-    Version: 1.0.1
+    Version: 1.0.2
     Author: stabbedbybrick
     Authorization: credentials
     Geofence: AU (API and downloads)
@@ -274,8 +274,12 @@ class TEN(Service):
 
         tracks = self._add_tracks(tracks)
 
-        for track in tracks.subtitles:
-            track.downloader = requests
+        for track in tracks:
+            track.OnSegmentFilter = lambda x: re.search(r"redirector.googlevideo.com", x.uri)
+            track.downloader_args = {"--ad-keyword": "redirector.googlevideo.com"}
+
+            if isinstance(track, Subtitle):
+                track.downloader = requests
 
         # if caption := stream_data.get("subtitles", [])[0].get("webvtt"):
         #     tracks.add(

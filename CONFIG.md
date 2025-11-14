@@ -547,12 +547,9 @@ Configuration data for pywidevine's serve functionality run through unshackle.
 This effectively allows you to run `unshackle serve` to start serving pywidevine Serve-compliant CDMs right from your
 local widevine device files.
 
-- `api_secret` - Secret key for REST API authentication. When set, enables the REST API server alongside the CDM serve functionality. This key is required for authenticating API requests.
-
 For example,
 
 ```yaml
-api_secret: "your-secret-key-here"
 users:
   secret_key_for_jane: # 32bit hex recommended, case-sensitive
     devices: # list of allowed devices for this user
@@ -659,12 +656,11 @@ Control subtitle conversion and SDH (hearing-impaired) stripping behavior.
   - `subby`: Always use subby with CommonIssuesFixer.
   - `subtitleedit`: Prefer SubtitleEdit when available; otherwise fallback to standard conversion.
   - `pycaption`: Use only the pycaption library (no SubtitleEdit, no subby).
-  - `pysubs2`: Use pysubs2 library (supports SRT, SSA, ASS, WebVTT, TTML, SAMI, MicroDVD, MPL2, TMP formats).
 
 - `sdh_method`: How to strip SDH cues. Default: `auto`.
   - `auto`: Try subby for SRT first, then SubtitleEdit, then filter-subs.
-  - `subby`: Use subby's SDHStripper (SRT only).
-  - `subtitleedit`: Use SubtitleEdit's RemoveTextForHI when available.
+  - `subby`: Use subby’s SDHStripper (SRT only).
+  - `subtitleedit`: Use SubtitleEdit’s RemoveTextForHI when available.
   - `filter-subs`: Use the subtitle-filter library.
 
 Example:
