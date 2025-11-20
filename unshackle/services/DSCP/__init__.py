@@ -2,28 +2,34 @@ from __future__ import annotations
 
 import json
 import re
-import sys
 import uuid
+from collections import defaultdict
 from collections.abc import Generator
+from copy import deepcopy
 from http.cookiejar import CookieJar
-from typing import Any, Optional, Union
+from typing import Any
 from urllib.parse import urljoin
+from zlib import crc32
 
 import click
 from click import Context
+from langcodes import Language
+from lxml import etree
 from unshackle.core.credential import Credential
-from unshackle.core.manifests import DASH, HLS
+from unshackle.core.manifests import DASH
 from unshackle.core.search_result import SearchResult
 from unshackle.core.service import Service
+from unshackle.core.session import session as CurlSession
 from unshackle.core.titles import Episode, Movie, Movies, Series
-from unshackle.core.tracks import Chapters, Tracks
-from requests import Request
+from unshackle.core.tracks import Audio, Chapter, Chapters, Subtitle, Track, Tracks
+from unshackle.core.utilities import is_close_match
 
 
 class DSCP(Service):
     """
     \b
-    Service code for Discovery Plus (https://discoveryplus.com).
+    Service code for Discovery Plus streaming service (https://www.discoveryplus.com).
+    Credit to @sp4rk.y for the subtitle fix.
 
     \b
     Version: 1.0.0
@@ -31,60 +37,106 @@ class DSCP(Service):
     Authorization: Cookies
     Robustness:
         Widevine:
-            L3: 2160p, AAC2.0
-        ClearKey:
-            AES-128: 1080p, AAC2.0
+            L1: 2160p, 1080p
+            L3: 720p
+        PlayReady:
+            SL3000: 2160p
+            SL2000: 1080p, 720p
 
     \b
     Tips:
-        - Input can be either complete title URL or just the path:
-            SHOW: /show/richard-hammonds-workshop
-            EPISODE: /video/richard-hammonds-workshop/new-beginnings
-            SPORT: /video/sport/tnt-sports-1/uefa-champions-league
-        - Use the --lang LANG_RANGE option to request non-english tracks
-        - use -v H.265 to request H.265 UHD tracks (if available)
+        - Input examples:
+            SHOW: https://play.discoveryplus.com/show/eb26e00e-9582-4790-a61c-48d785926f58
+            STANDALONE: https://play.discoveryplus.com/standalone/5012ae3f-d9bd-46ec-ad42-b8116b811441
+            SPORT: https://play.discoveryplus.com/sport/9cc449de-2a64-524d-bcb6-cabd4ac70340
+            EPISODE: https://play.discoveryplus.com/video/watch/8685efdd-a3c4-4892-b1d1-5f9f071cacf1/de67ea8e-a90f-4609-81af-4f09906f60b2
 
     \b
     Notes:
-        - Using '-v H.265' will request DASH manifest even if no H.265 tracks are available.
-          This can be useful if HLS is not available for some reason.
+        - Language tags can be mislabelled or missing on some titles. List tracks with --list to verify.
+        - All qualities, codecs, and ranges are included when available. Use -v H.265, -r HDR10, -q 1080p, etc. to select.
+
+    \b
+    Bonus tip: With some minor adjustments to the code and config, you can convert this to an HMAX service.
+        - Replace all instances of "DSCP" with "HMAX"
+        - Replace all instances of "dplus" with "beam"
+        - Replace all instances of "discoveryplus" with "hbomax"
 
     """
-
-    ALIASES = ("dplus", "discoveryplus", "discovery+")
-    TITLE_RE = r"^(?:https?://(?:www\.)?discoveryplus\.com(?:/[a-z]{2})?)?/(?P<type>show|video)/(?P<id>[a-z0-9-/]+)"
+    
+    ALIASES = ("discoveryplus",)
+    TITLE_RE = (
+        r"^(?:https?://play.discoveryplus\.com?)?/(?P<type>show|mini-series|video|movie|topical|standalone|sport)/(?P<id>[a-z0-9-/]+)"
+    )
 
     @staticmethod
-    @click.command(name="DSCP", short_help="https://discoveryplus.com", help=__doc__)
+    @click.command(name="DSCP", short_help="https://www.discoveryplus.com/", help=__doc__)
     @click.argument("title", type=str)
     @click.pass_context
     def cli(ctx: Context, **kwargs: Any) -> DSCP:
         return DSCP(ctx, **kwargs)
 
     def __init__(self, ctx: Context, title: str):
-        self.title = title
-        self.vcodec = ctx.parent.params.get("vcodec")
         super().__init__(ctx)
+        self.title = title
 
-    def authenticate(
-        self,
-        cookies: Optional[CookieJar] = None,
-        credential: Optional[Credential] = None,
-    ) -> None:
+        self.profile = ctx.parent.params.get("profile")
+        if not self.profile:
+            self.profile = "default"
+
+        self.cdm = ctx.obj.cdm
+        if self.cdm is not None:
+            self.drm_system = "playready"
+            self.security_level = "SL3000"
+
+            if self.cdm.security_level <= 3:
+                self.drm_system = "widevine"
+                self.security_level = "L1"
+
+    def get_session(self) -> CurlSession:
+        return CurlSession("okhttp4", status_forcelist=[429, 502, 503, 504])
+
+    def authenticate(self, cookies: CookieJar | None = None, credential: Credential | None = None) -> None:
         super().authenticate(cookies, credential)
         if not cookies:
             raise EnvironmentError("Service requires Cookies for Authentication.")
 
-        self.session.cookies.update(cookies)
+        cache = self.cache.get(f"tokens_{self.profile}")
+        if cache:
+            self.log.info(" + Using cached Tokens...")
+            tokens = cache.data
+        else:
+            self.log.info(" + Setting up new profile...")
 
-        self.base_url = None
-        info = self._request("GET", "https://global-prod.disco-api.com/bootstrapInfo")
-        self.base_url = info["data"]["attributes"].get("baseApiUrl")
+            st_token = self.session.cookies.get_dict().get("st")
+            if not st_token:
+                raise ValueError("- Unable to find token in cookies, try refreshing.")
+
+            profile = {"token": st_token, "device_id": str(uuid.uuid1())}
+            cache.set(profile)
+            tokens = cache.data
+
+        self.device_id = tokens["device_id"]
+        client_id = self.config["client_id"]
+
+        self.session.headers.update({
+            "user-agent": "androidtv dplus/20.8.1.2 (android/9; en-US; SHIELD Android TV-NVIDIA; Build/1)",
+            "x-disco-client": "ANDROIDTV:9:dplus:20.8.1.2",
+            "x-disco-params": "realm=bolt,bid=dplus,features=ar",
+            "x-device-info": f"dplus/20.8.1.2 (NVIDIA/SHIELD Android TV; android/9-mdarcy; {self.device_id}/{client_id})",
+        })
+
+        self.base_url = self.config["endpoints"]["base_url"].format("any", "any")
+        access = self._request("GET", "/token", params={"realm": "bolt", "deviceId": self.device_id})
+        
+        self.access_token = access["data"]["attributes"]["token"]
+
+        config = self._request("POST", "/session-context/headwaiter/v1/bootstrap")
+        self.base_url = self.config["endpoints"]["base_url"].format(config["routing"]["tenant"], config["routing"]["homeMarket"])
 
         user = self._request("GET", "/users/me")
-        self.territory = user["data"]["attributes"]["currentLocationTerritory"]
-        self.user_language = user["data"]["attributes"]["clientTranslationLanguageTags"][0]
-        self.site_id = user["meta"]["site"]["id"]
+        if user["data"]["attributes"]["anonymous"]:
+            raise ValueError("Anonymous user - try refreshing cookies.")
 
     def search(self) -> Generator[SearchResult, None, None]:
         params = {
@@ -100,108 +152,318 @@ class DSCP(Service):
 
         for result in results:
             yield SearchResult(
-                id_=f"/show/{result.get('alternateId')}",
+                id_=f"https://play.discoveryplus.com/show/{result.get('alternateId')}",
                 title=result.get("name"),
                 description=result.get("description"),
                 label="show",
-                url=f"/show/{result.get('alternateId')}",
+                url=f"https://play.discoveryplus.com/show/{result.get('alternateId')}",
             )
 
-    def get_titles(self) -> Union[Movies, Series]:
+    def get_titles(self) -> Movies | Series:
         try:
-            kind, content_id = (re.match(self.TITLE_RE, self.title).group(i) for i in ("type", "id"))
+            entity, content_id = (re.match(self.TITLE_RE, self.title).group(i) for i in ("type", "id"))
         except Exception:
             raise ValueError("Could not parse ID from title - is the URL correct?")
 
-        if kind == "video":
-            episodes = self._episode(content_id)
-
-        if kind == "show":
+        if entity in ("show", "mini-series", "topical"):
             episodes = self._show(content_id)
+            return Series(episodes)
 
-        return Series(episodes)
+        elif entity in ("movie", "standalone"):
+            movie = self._movie(content_id, entity)
+            return Movies(movie)
+        
+        elif entity == "sport":
+            sport = self._sport(content_id)
+            return Movies(sport)
 
-    def get_tracks(self, title: Union[Movie, Episode]) -> Tracks:
+        elif entity == "video":
+            episodes = self._episode(content_id)
+            return Series(episodes)
+
+        else:
+            raise ValueError(f"Unknown content: {entity}")
+
+
+    def get_tracks(self, title: Movie | Episode) -> Tracks:
         payload = {
-            "videoId": title.id,
-            "deviceInfo": {
-                "adBlocker": "false",
-                "drmSupported": "false",
-                "hwDecodingCapabilities": ["H264", "H265"],
-                "screen": {"width": 3840, "height": 2160},
-                "player": {"width": 3840, "height": 2160},
+            "appBundle": "com.wbd.stream",
+            "applicationSessionId": self.device_id,
+            "capabilities": {
+                "codecs": {
+                    "audio": {
+                        "decoders": [
+                            {"codec": "aac", "profiles": ["lc", "he", "hev2", "xhe"]},
+                            {"codec": "eac3", "profiles": ["atmos"]},
+                        ]
+                    },
+                    "video": {
+                        "decoders": [
+                            {
+                                "codec": "h264",
+                                "levelConstraints": {
+                                    "framerate": {"max": 60, "min": 0},
+                                    "height": {"max": 2160, "min": 48},
+                                    "width": {"max": 3840, "min": 48},
+                                },
+                                "maxLevel": "5.2",
+                                "profiles": ["baseline", "main", "high"],
+                            },
+                            {
+                                "codec": "h265",
+                                "levelConstraints": {
+                                    "framerate": {"max": 60, "min": 0},
+                                    "height": {"max": 2160, "min": 144},
+                                    "width": {"max": 3840, "min": 144},
+                                },
+                                "maxLevel": "5.1",
+                                "profiles": ["main10", "main"],
+                            },
+                        ],
+                        "hdrFormats": ["hdr10", "hdr10plus", "dolbyvision", "dolbyvision5", "dolbyvision8", "hlg"],
+                    },
+                },
+                "contentProtection": {
+                    "contentDecryptionModules": [
+                        {"drmKeySystem": self.drm_system, "maxSecurityLevel": self.security_level}
+                    ]
+                },
+                "manifests": {"formats": {"dash": {}}},
             },
-            "wisteriaProperties": {
-                "product": "dplus_emea",
-                "sessionId": str(uuid.uuid1()),
+            "consumptionType": "streaming",
+            "deviceInfo": {
+                "player": {
+                    "mediaEngine": {"name": "", "version": ""},
+                    "playerView": {"height": 2160, "width": 3840},
+                    "sdk": {"name": "", "version": ""},
+                }
+            },
+            "editId": title.id,
+            "firstPlay": False,
+            "gdpr": False,
+            "playbackSessionId": str(uuid.uuid4()),
+            "userPreferences": {
+                #'uiLanguage': 'en'
             },
         }
 
-        if self.vcodec == "H.265":
-            payload["wisteriaProperties"]["device"] = {
-                "browser": {"name": "chrome", "version": "96.0.4664.55"},
-                "type": "firetv",
-            }
-            payload["wisteriaProperties"]["platform"] = "firetv"
+        playback = self._request(
+            "POST", "/playback-orchestrator/any/playback-orchestrator/v1/playbackInfo",
+            headers={"Authorization": f"Bearer {self.access_token}"},
+            json=payload,
+        )
+        
+        original_language = next((
+            x.get("language")
+            for x in playback["videos"][0]["audioTracks"]
+            if "Original" in x.get("displayName", "")
+        ), "")
 
-        res = self._request("POST", "/playback/v3/videoPlaybackInfo", payload=payload)
+        manifest = (
+            playback.get("fallback", {}).get("manifest", {}).get("url", "").replace("_fallback", "")
+            or playback.get("manifest", {}).get("url")
+        )
 
-        streaming = res["data"]["attributes"]["streaming"][0]
-        streaming_type = streaming["type"].strip().lower()
-        manifest = streaming["url"]
+        license_url = (
+            playback.get("fallback", {}).get("drm", {}).get("schemes", {}).get(self.drm_system, {}).get("licenseUrl")
+            or playback.get("drm", {}).get("schemes", {}).get(self.drm_system, {}).get("licenseUrl")
+        )
 
-        self.token = None
-        self.license = None
-        if streaming["protection"]["drmEnabled"]:
-            self.token = streaming["protection"]["drmToken"]
-            self.license = streaming["protection"]["schemes"]["widevine"]["licenseUrl"]
+        title.data["license_url"] = license_url
+        title.data["chapters"] = next((x.get("annotations") for x in playback["videos"] if x["type"] == "main"), None)
 
-        if streaming_type == "hls":
-            tracks = HLS.from_url(url=manifest, session=self.session).to_tracks(language=title.language)
+        dash = DASH.from_url(url=manifest, session=self.session)
+        tracks = dash.to_tracks(language="en", period_filter=self._period_filter)
 
-        elif streaming_type == "dash":
-            tracks = DASH.from_url(url=manifest, session=self.session).to_tracks(language=title.language)
+        for track in tracks:
+            track.is_original_lang = str(track.language) == original_language
+            track.name = "Original" if track.is_original_lang else track.name
 
-        else:
-            raise ValueError(f"Unknown streaming type: {streaming_type}")
+            if isinstance(track, Audio):
+                role = track.data["dash"]["representation"].find("Role")
+                if role is not None and role.get("value") in ["description", "alternative", "alternate"]:
+                    track.descriptive = True
+
+            if isinstance(track, Subtitle):
+                tracks.subtitles.remove(track)
+
+        subtitles = self._process_subtitles(dash, original_language)
+        tracks.add(subtitles)
 
         return tracks
 
-    def get_chapters(self, title: Union[Movie, Episode]) -> Chapters:
-        return Chapters()
+    def get_chapters(self, title: Movie | Episode) -> Chapters:
+        if not title.data.get("chapters"):
+            return Chapters()
+        
+        chapters = []
+        for chapter in title.data["chapters"]:
+            if "recap" in chapter.get("secondaryType", "").lower():
+                chapters.append(Chapter(name="Recap", timestamp=chapter["start"]))
+                if chapter.get("end"):
+                    chapters.append(Chapter(timestamp=chapter.get("end")))
+            if "intro" in chapter.get("secondaryType", "").lower():
+                chapters.append(Chapter(name="Intro", timestamp=chapter["start"]))
+                if chapter.get("end"):
+                    chapters.append(Chapter(timestamp=chapter.get("end")))
+            elif "credits" in chapter.get("type", "").lower():
+                chapters.append(Chapter(name="Credits", timestamp=chapter["start"]))
+        
+        if not any(c.timestamp == 0 for c in chapters):
+            chapters.append(Chapter(timestamp=0))
 
-    def get_widevine_service_certificate(self, **_: Any) -> str:
-        return None
+        return sorted(chapters, key=lambda x: x.timestamp)
 
-    def get_widevine_license(self, challenge: bytes, **_: Any) -> str:
-        if not self.license:
+    def get_widevine_service_certificate(self, challenge: bytes, title: Episode | Movie, **_: Any) -> str:
+        if not (license_url := title.data.get("license_url")):
+            return None
+        
+        return self.session.post(url=license_url, data=challenge).content
+        
+
+    def get_widevine_license(self, *, challenge: bytes, title: Episode | Movie, track: Any) -> bytes | str | None:
+        if not (license_url := title.data.get("license_url")):
             return None
 
-        r = self.session.post(self.license, headers={"Preauthorization": self.token}, data=challenge)
-        if not r.ok:
-            raise ConnectionError(r.text)
+        r = self.session.post(url=license_url, data=challenge)
+        if r.status_code != 200:
+            raise ConnectionError(r.status_code, r.text)
+
+        return r.content
+    
+    def get_playready_license(self, *, challenge: bytes, title: Episode | Movie, track: Any) -> bytes | str | None:
+        if not (license_url := title.data.get("license_url")):
+            return None
+
+        r = self.session.post(url=license_url, data=challenge)
+        if r.status_code != 200:
+            raise ConnectionError(r.status_code, r.text)
 
         return r.content
 
     # Service specific functions
 
+    @staticmethod
+    def _process_subtitles(dash: DASH, language: str) -> list[Subtitle]:
+        subtitle_groups = defaultdict(list)
+        manifest = dash.manifest
+
+        for period in manifest.findall("Period"):
+            for adapt_set in period.findall("AdaptationSet"):
+                if adapt_set.get("contentType") != "text" or not adapt_set.get("lang"):
+                    continue
+
+                role = adapt_set.find("Role")
+                label = adapt_set.find("Label")
+                key = (
+                    adapt_set.get("lang"),
+                    role.get("value") if role is not None else "subtitle",
+                    label.text if label is not None else "",
+                )
+                subtitle_groups[key].append((period, adapt_set))
+
+        final_tracks = []
+        for (lang, role_value, label_text), adapt_set_group in subtitle_groups.items():
+            first_period, first_adapt = adapt_set_group[0]
+            if first_adapt.find("Representation") is None:
+                continue
+
+            s_elements_with_context = []
+            for _, adapt_set in adapt_set_group:
+                rep = adapt_set.find("Representation")
+                if rep is None:
+                    continue
+
+                template = rep.find("SegmentTemplate") or adapt_set.find("SegmentTemplate")
+                timeline = template.find("SegmentTimeline") if template is not None else None
+
+                if timeline is not None:
+                    start_num = int(template.get("startNumber", 1))
+                    s_elements_with_context.extend((start_num, s_elem) for s_elem in timeline.findall("S"))
+
+            s_elements_with_context.sort(key=lambda x: x[0])
+
+            combined_adapt = deepcopy(first_adapt)
+            combined_rep = combined_adapt.find("Representation")
+
+            seg_template = combined_rep.find("SegmentTemplate")
+            if seg_template is None:
+                template_at_adapt = combined_adapt.find("SegmentTemplate")
+                if template_at_adapt is not None:
+                    seg_template = deepcopy(template_at_adapt)
+                    combined_rep.append(seg_template)
+                    combined_adapt.remove(template_at_adapt)
+                else:
+                    continue
+
+            if seg_template.find("SegmentTimeline") is not None:
+                seg_template.remove(seg_template.find("SegmentTimeline"))
+
+            new_timeline = etree.Element("SegmentTimeline")
+            new_timeline.extend(deepcopy(s) for _, s in s_elements_with_context)
+            seg_template.append(new_timeline)
+
+            seg_template.set("startNumber", "1")
+            if "endNumber" in seg_template.attrib:
+                del seg_template.attrib["endNumber"]
+
+            track_id = hex(crc32(f"sub-{lang}-{role_value}-{label_text}".encode()) & 0xFFFFFFFF)[2:]
+            lang_obj = Language.get(lang)
+            track_name = "Original" if (language and is_close_match(lang_obj, [language])) else lang_obj.display_name()
+
+            final_tracks.append(
+                Subtitle(
+                    id_=track_id,
+                    url=dash.url,
+                    codec=Subtitle.Codec.WebVTT,
+                    language=lang_obj,
+                    is_original_lang=bool(language and is_close_match(lang_obj, [language])),
+                    descriptor=Track.Descriptor.DASH,
+                    sdh="sdh" in label_text.lower() or role_value == "caption",
+                    forced="forced" in label_text.lower() or "forced" in role_value.lower(),
+                    name=track_name,
+                    data={
+                        "dash": {
+                            "manifest": manifest,
+                            "period": first_period,
+                            "adaptation_set": combined_adapt,
+                            "representation": combined_rep,
+                        }
+                    },
+                )
+            )
+
+        return final_tracks
+
+    @staticmethod
+    def _period_filter(period: Any) -> bool:
+        """Shouldn't be needed for fallback manifest"""
+        if not (duration := period.get("duration")):
+            return False
+        
+        return DASH.pt_to_sec(duration) < 120
+
     def _show(self, title: str) -> Episode:
         params = {
             "include": "default",
-            "decorators": "playbackAllowed,contentAction,badges",
+            "decorators": "viewingHistory,badges,isFavorite,contentAction",
         }
         data = self._request("GET", "/cms/routes/show/{}".format(title), params=params)
 
-        content = next(x for x in data["included"] if x["attributes"].get("alias") == "generic-show-episodes")
-        content_id = content["id"]
-        show_id = content["attributes"]["component"]["mandatoryParams"]
+        info = next(x for x in data["included"] if x.get("attributes", {}).get("alternateId", "") == title)
+        content = next((x for x in data["included"] if "show-page-rail-episodes-tabbed-content" in x["attributes"].get("alias", "")), None)
+        if not content:
+            raise ValueError("Show not found")
+        
+        content_id = content.get("id")
+        show_id = content["attributes"]["component"].get("mandatoryParams", "")
         season_params = [x.get("parameter") for x in content["attributes"]["component"]["filters"][0]["options"]]
         page = next(x for x in data["included"] if x.get("type", "") == "page")
 
         seasons = [
             self._request(
                 "GET", "/cms/collections/{}?{}&{}".format(content_id, season, show_id),
-                params={"include": "default", "decorators": "playbackAllowed,contentAction,badges"},
+                params={"include": "default", "decorators": "viewingHistory,badges,isFavorite,contentAction"},
             )
             for season in season_params
         ]
@@ -210,92 +472,112 @@ class DSCP(Service):
 
         return [
             Episode(
-                id_=ep["id"],
+                id_=ep["relationships"]["edit"]["data"]["id"],
                 service=self.__class__,
-                title=page["attributes"]["title"],
-                year=ep["attributes"]["airDate"][:4],
+                title=page["attributes"].get("title") or info["attributes"].get("originalName"),
+                year=ep["attributes"]["airDate"][:4] if ep["attributes"].get("airDate") else None,
                 season=ep["attributes"].get("seasonNumber"),
                 number=ep["attributes"].get("episodeNumber"),
                 name=ep["attributes"]["name"],
-                language=ep["attributes"]["audioTracks"][0]
-                if ep["attributes"].get("audioTracks")
-                else self.user_language,
                 data=ep,
             )
             for episodes in videos
             for ep in episodes
-            if ep["attributes"]["videoType"] == "EPISODE"
+            if ep.get("attributes", {}).get("videoType", "") == "EPISODE"
         ]
 
     def _episode(self, title: str) -> Episode:
-        params = {
-            "include": "default",
-            "decorators": "playbackAllowed,contentAction,badges",
-        }
-        data = self._request("GET", "/cms/routes/video/{}".format(title), params=params)
-        page = next((x for x in data["included"] if x.get("type", "") == "page"), None)
-        if not page:
-            raise IndexError("Episode page not found")
+        video_id = title.split("/")[1]
 
-        video_id = page["relationships"].get("primaryContent", {}).get("data", {}).get("id")
-        if not video_id:
-            raise IndexError("Episode id not found")
-
-        params = {"decorators": "isFavorite", "include": "primaryChannel"}
+        params = {"decorators": "isFavorite", "include": "show"}
         content = self._request("GET", "/content/videos/{}".format(video_id), params=params)
-        episode = content["data"]["attributes"]
-        name = episode.get("name")
-        if episode.get("secondaryTitle"):
-            name += f" {episode.get('secondaryTitle')}"
+
+        episode = content.get("data", {}).get("attributes")
+        video_type = episode.get("videoType")
+        relationships = content.get("data", {}).get("relationships")
+        show = next((x for x in content["included"] if x.get("type", "") == "show"), {})
+
+        show_title = show.get("attributes", {}).get("name") or show.get("attributes", {}).get("originalName")
+        episode_name = episode.get("originalName") or episode.get("secondaryTitle")
+        if video_type.lower() in ("clip", "standalone_event"):
+            show_title = episode.get("originalName")
+            episode_name = episode.get("secondaryTitle", "")
 
         return [
             Episode(
-                id_=content["data"].get("id"),
+                id_=relationships.get("edit", {}).get("data", {}).get("id"),
                 service=self.__class__,
-                title=page["attributes"]["title"],
+                title=show_title,
                 year=int(episode.get("airDate")[:4]) if episode.get("airDate") else None,
                 season=episode.get("seasonNumber") or 0,
                 number=episode.get("episodeNumber") or 0,
-                name=name,
-                language=episode["audioTracks"][0] if episode.get("audioTracks") else self.user_language,
+                name=episode_name,
                 data=episode,
             )
         ]
+    
+    def _sport(self, title: str) -> Movie:
+        params = {
+            "include": "default",
+            "decorators": "viewingHistory,badges,isFavorite,contentAction",
+        }
+        data = self._request("GET", "/cms/routes/sport/{}".format(title), params=params)
 
-    def _request(
-        self,
-        method: str,
-        api: str,
-        params: dict = None,
-        headers: dict = None,
-        payload: dict = None,
-    ) -> Any[dict | str]:
-        url = urljoin(self.base_url, api)
-        self.session.headers.update(self.config["headers"])
+        content = next((x for x in data["included"] if x.get("attributes", {}).get("alternateId", "") == title), None)
+        if not content:
+            raise ValueError(f"Content not found for title: {title}")
 
-        if params:
-            self.session.params.update(params)
-        if headers:
-            self.session.headers.update(headers)
+        movie = content.get("attributes")
+        relationships = content.get("relationships")
 
-        prep = self.session.prepare_request(Request(method, url, json=payload))
-        response = self.session.send(prep)
+        name = movie.get("name") or movie.get("originalName")
+        year = int(movie.get("firstAvailableDate")[:4]) if movie.get("firstAvailableDate") else None
+
+        return [
+            Movie(
+                id_=relationships.get("edit", {}).get("data", {}).get("id"),
+                service=self.__class__,
+                name=name + " - " + movie.get("secondaryTitle", ""),
+                year=year,
+                data=movie,
+            )
+        ]
+
+    def _movie(self, title: str, entity: str) -> Movie:
+        params = {
+            "include": "default",
+            "decorators": "isFavorite,playbackAllowed,contentAction,badges",
+        }
+        data = self._request("GET", "/cms/routes/movie/{}".format(title), params=params)
+
+        movie = next((
+            x for x in data["included"]if x.get("attributes", {}).get("videoType", "").lower() == entity), None
+        )
+        if not movie:
+            raise ValueError("Movie not found")
+
+        return [
+            Movie(
+                id_=movie["relationships"]["edit"]["data"]["id"],
+                service=self.__class__,
+                name=movie["attributes"].get("name") or movie["attributes"].get("originalName"),
+                year=int(movie["attributes"]["airDate"][:4]) if movie["attributes"].get("airDate") else None,
+                data=movie,
+            )
+        ]
+
+    def _request(self, method: str, endpoint: str, **kwargs: Any) -> Any[dict | str]:
+        url = urljoin(self.base_url, endpoint)
+
+        response = self.session.request(method, url, **kwargs)
 
         try:
             data = json.loads(response.content)
 
             if data.get("errors"):
-                if "invalid.token" in data["errors"][0]["code"]:
-                    self.log.error("- Invalid Token. Cookies are invalid or may have expired.")
-                    sys.exit(1)
-
-                if "missingpackage" in data["errors"][0]["code"]:
-                    self.log.error("- Access Denied. Title is not available for this subscription.")
-                    sys.exit(1)
-
                 raise ConnectionError(data["errors"])
 
             return data
 
         except Exception as e:
-            raise ConnectionError("Request failed: {}".format(e))
+            raise ConnectionError(f"Request failed for {url}: {e}")

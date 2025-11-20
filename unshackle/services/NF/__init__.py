@@ -20,6 +20,7 @@ from pymp4.parser import Box
 from pywidevine import PSSH, Cdm
 import requests
 from langcodes import Language
+from pathlib import Path
 
 from unshackle.core.constants import AnyTrack
 from unshackle.core.credential import Credential
@@ -29,7 +30,7 @@ from unshackle.core.titles import Titles_T, Title_T
 from unshackle.core.titles.episode import Episode, Series
 from unshackle.core.titles.movie import Movie, Movies
 from unshackle.core.titles.title import Title
-from unshackle.core.tracks import Tracks, Chapters
+from unshackle.core.tracks import Tracks, Chapters, Hybrid
 from unshackle.core.tracks.audio import Audio
 from unshackle.core.tracks.chapter import Chapter
 from unshackle.core.tracks.subtitle import Subtitle
@@ -76,7 +77,7 @@ class NF(Service):
     @click.option("-hb", "--high-bitrate", is_flag=True, default=False, help="Get more video bitrate")
     @click.pass_context
     def cli(ctx, **kwargs):
-        return Netflix(ctx, **kwargs)
+        return NF(ctx, **kwargs)
 
     def __init__(self, ctx: click.Context, title: str, drm_system: Literal["widevine", "playready"], profile: str, meta_lang: str, hydrate_track: bool, high_bitrate: bool):
         super().__init__(ctx)
@@ -162,39 +163,74 @@ class NF(Service):
 
 
     def get_tracks(self, title: Title_T) -> Tracks:
-       
         tracks = Tracks()
-        
-        # If Video Codec is H.264 is selected but `self.profile is none` profile QC has to be requested seperately
+    
+        def mark_repack(track_group):
+            # mark videos + audio
+            for t in track_group.videos + track_group.audio:
+                t.needs_repack = True
+    
+            # mark subtitles
+            for t in getattr(track_group, "subtitles", []):
+                t.needs_repack = True
+    
+        # -------------------------------
+        # Parse manifests / fetch tracks
+        # -------------------------------
         if self.vcodec == Video.Codec.AVC:
-            # self.log.info(f"Profile: {self.profile}")
             try:
                 manifest = self.get_manifest(title, self.profiles)
                 movie_track = self.manifest_as_tracks(manifest, title, self.hydrate_track)
+                mark_repack(movie_track)
                 tracks.add(movie_track)
-
+    
                 if self.profile is not None:
                     self.log.info(f"Requested profiles: {self.profile}")
                 else:
-                    qc_720_profile = [x for x in self.config["profiles"]["video"][self.vcodec.extension.upper()]["QC"] if "l40" not in x and 720 in self.quality]
-                    qc_manifest = self.get_manifest(title, qc_720_profile if 720 in self.quality else self.config["profiles"]["video"][self.vcodec.extension.upper()]["QC"])
+                    qc_720_profile = [
+                        x for x in self.config["profiles"]["video"][self.vcodec.extension.upper()]["QC"]
+                        if "l40" not in x and 720 in self.quality
+                    ]
+    
+                    # QC profiles
+                    qc_manifest = self.get_manifest(
+                        title,
+                        qc_720_profile if 720 in self.quality
+                        else self.config["profiles"]["video"][self.vcodec.extension.upper()]["QC"]
+                    )
                     qc_tracks = self.manifest_as_tracks(qc_manifest, title, False)
+                    mark_repack(qc_tracks)
                     tracks.add(qc_tracks.videos)
-
-                    mpl_manifest = self.get_manifest(title, [x for x in self.config["profiles"]["video"][self.vcodec.extension.upper()]["MPL"] if "l40" not in x])
+    
+                    # MPL Profiles
+                    mpl_manifest = self.get_manifest(
+                        title,
+                        [x for x in self.config["profiles"]["video"][self.vcodec.extension.upper()]["MPL"]
+                         if "l40" not in x]
+                    )
                     mpl_tracks = self.manifest_as_tracks(mpl_manifest, title, False)
+                    mark_repack(mpl_tracks)
                     tracks.add(mpl_tracks.videos)
+    
             except Exception as e:
                 self.log.error(e)
+    
         else:
+            # HEVC / DV / HDR mode
             if self.high_bitrate:
                 splitted_profiles = self.split_profiles(self.profiles)
                 for index, profile_list in enumerate(splitted_profiles):
                     try:
                         self.log.debug(f"Index: {index}. Getting profiles: {profile_list}")
                         manifest = self.get_manifest(title, profile_list)
-                        manifest_tracks = self.manifest_as_tracks(manifest, title, self.hydrate_track if index == 0 else False)
+                        manifest_tracks = self.manifest_as_tracks(
+                            manifest,
+                            title,
+                            self.hydrate_track if index == 0 else False
+                        )
+                        mark_repack(manifest_tracks)
                         tracks.add(manifest_tracks if index == 0 else manifest_tracks.videos)
+    
                     except Exception:
                         self.log.error(f"Error getting profile: {profile_list}. Skipping")
                         continue
@@ -202,49 +238,160 @@ class NF(Service):
                 try:
                     manifest = self.get_manifest(title, self.profiles)
                     manifest_tracks = self.manifest_as_tracks(manifest, title, self.hydrate_track)
+                    mark_repack(manifest_tracks)
                     tracks.add(manifest_tracks)
                 except Exception as e:
                     self.log.error(e)
+    
+        # --------------------------------------------------------
+        # 🧩 HYBRID DV+HDR Injection (copied from 1st script)
+        # --------------------------------------------------------
+        video_ranges = [v.range for v in tracks.videos]
+        has_dv = Video.Range.DV in video_ranges
+        has_hdr10 = Video.Range.HDR10 in video_ranges
+        has_hdr10p = Video.Range.HDR10P in video_ranges
+    
+        if self.range[0] == Video.Range.HYBRID and has_hdr10 and (has_dv or has_hdr10p):
+            try:
+                self.log.info("Performing HYBRID DV+HDR injection...")
+    
+                hdr_video = next((v for v in tracks.videos if v.range == Video.Range.HDR10), None)
+                dv_video = next((v for v in tracks.videos if v.range in (Video.Range.DV, Video.Range.HDR10P)), None)
+    
+                if not hdr_video or not dv_video:
+                    raise Exception("Missing HDR10 or DV video track for hybrid merge")
+    
+                # Ensure both files exist before injection
+                def ensure_local_file(video):
+                    if not getattr(video, "path", None) or not os.path.exists(video.path):
+                        temp_path = config.directories.temp / f"{video.id}.hevc"
+                        self.log.info(f"Downloading temporary stream for {video.range} → {temp_path.name}")
+                        with self.session.get(video.url, stream=True) as r:
+                            r.raise_for_status()
+                            with open(temp_path, "wb") as f:
+                                for chunk in r.iter_content(chunk_size=1024 * 1024):
+                                    f.write(chunk)
+                        video.path = temp_path
+                    return video.path
+    
+                ensure_local_file(hdr_video)
+                ensure_local_file(dv_video)
+    
+                # Perform hybrid merge
+                Hybrid([hdr_video, dv_video], self.__class__.__name__.lower())
+    
+                injected_path = config.directories.temp / "HDR10-DV.hevc"
+                self.log.info(f"Hybrid file created → {injected_path}")
+    
+                # Replace HDR10 with merged track
+                hdr_video.range = Video.Range.DV
+                hdr_video.path = injected_path
+    
+            except Exception as e:
+                self.log.warning(f"Hybrid injection failed: {e}")
+    
+        # --------------------------------------------------------
+        # Disable proxy for all tracks
+        # --------------------------------------------------------
+        for track in tracks:
+            track.needs_proxy = False
+    
+        # --------------------------------------------------------
+        # Add Attachments + Save poster
+        # --------------------------------------------------------
+        try:
+            if isinstance(title, Movie):
+                poster_url = title.data["boxart"][0]["url"]
+            else:
+                poster_url = title.data["stills"][0]["url"]
 
+            # Temp directory
+            temp_dir = Path(self.config.get("directories", {}).get("Downloads", "./Downloads"))
+            temp_dir.mkdir(parents=True, exist_ok=True)
 
-            
-        # Add Attachments for profile picture
-        if isinstance(title, Movie):
-            tracks.add(
-                Attachment.from_url(
-                    url=title.data["boxart"][0]["url"]
-                )
-            )
-        else:
-            tracks.add(
-                Attachment.from_url(title.data["stills"][0]["url"])
-            )
-        
+            poster_path = temp_dir / "poster.jpg"
+
+            # Save poster locally
+            try:
+                resp = requests.get(poster_url, timeout=15)
+                if resp.status_code == 200:
+                    with open(poster_path, "wb") as f:
+                        f.write(resp.content)
+            except Exception as e:
+                self.log.error(f"Failed to save poster.jpg: {e}")
+
+            # Create attachment
+            attachment = Attachment.from_url(url=poster_url)
+            attachment.filename = str(poster_path)
+            tracks.add(attachment)
+
+        except Exception as e:
+            self.log.error(f"Failed to add attachments: {e}")
+
+        return tracks
+    
         return tracks
         
     def split_profiles(self, profiles: List[str]) -> List[List[str]]:
         """
-        Split profiles with names containing specific patterns based on video codec
-        For H264: uses patterns "l30", "l31", "l40" (lowercase)
-        For non-H264: uses patterns "L30", "L31", "L40", "L41", "L50", "L51" (uppercase)
-        Returns List[List[str]] type with profiles grouped by pattern
+        Split profiles based on codec level ranges and also DV/HDR groups for HYBRID mode.
         """
-        # Define the profile patterns to match based on video codec
-        if self.vcodec == Video.Codec.AVC:  # H264
-            patterns = ["l30", "l31", "l40"]
+    
+        # -----------------------------
+        # Patterns for profile splitting
+        # -----------------------------
+        if self.vcodec == Video.Codec.AVC:
+            level_patterns = ["l30", "l31", "l40"]
         else:
-            patterns = ["L30", "L31", "L40", "L41", "L50", "L51"]
-        
-        # Group profiles by pattern
+            level_patterns = ["L30", "L31", "L40", "L41", "L50", "L51"]
+    
+        # -----------------------------
+        # HYBRID MODE — Add DV/HDR splits
+        # -----------------------------
+        dv_patterns = ["DV", "dv"]
+        hdr10_patterns = ["HDR10", "hdr10"]
+        hdr10p_patterns = ["HDR10P", "hdr10p"]
+    
         result: List[List[str]] = []
-        for pattern in patterns:
-            pattern_group = []
-            for profile in profiles:
-                if pattern in profile:
-                    pattern_group.append(profile)
-            if pattern_group:  # Only add non-empty groups
-                result.append(pattern_group)
-        
+        used = set()
+    
+        # -----------------------------
+        # Group DV profiles first
+        # -----------------------------
+        if self.range[0] == Video.Range.HYBRID:
+            dv_group = [p for p in profiles if any(tag in p for tag in dv_patterns)]
+            if dv_group:
+                result.append(dv_group)
+                used.update(dv_group)
+    
+            # Group HDR10 profiles
+            hdr10_group = [p for p in profiles if any(tag in p for tag in hdr10_patterns)]
+            if hdr10_group:
+                result.append(hdr10_group)
+                used.update(hdr10_group)
+    
+            # Group HDR10+ profiles
+            hdr10p_group = [p for p in profiles if any(tag in p for tag in hdr10p_patterns)]
+            if hdr10p_group:
+                result.append(hdr10p_group)
+                used.update(hdr10p_group)
+    
+        # -----------------------------
+        # Normal HEVC/H264 Level Splitting
+        # -----------------------------
+        for pattern in level_patterns:
+            group = [p for p in profiles if (pattern in p and p not in used)]
+            if group:
+                result.append(group)
+                used.update(group)
+    
+        # -----------------------------
+        # Any remaining profiles
+        # -----------------------------
+        leftover = [p for p in profiles if p not in used]
+        if leftover:
+            result.append(leftover)
+    
         return result
         
         
@@ -324,42 +471,61 @@ class NF(Service):
         # return super().get_widevine_license(challenge=challenge, title=title, track=track)
 
     def configure(self):
-        # self.log.info(ctx)
-        # if profile is none from argument let's use them all profile in video codec scope
-        # self.log.info(f"Requested profiles: {self.profile}")
+        # -----------------------------
+        # Profiles selection
+        # -----------------------------
         if self.profile is None:
             self.profiles = self.config["profiles"]["video"][self.vcodec.extension.upper()]
-
-
+    
         if self.profile is not None:
             self.requested_profiles = self.profile.split('+')
             self.log.info(f"Requested profile: {self.requested_profiles}")
         else:
-            # self.log.info(f"Video Range: {self.range}")
             self.requested_profiles = self.config["profiles"]["video"][self.vcodec.extension.upper()]
-        # Make sure video codec is supported by Netflix
+    
+        # -----------------------------
+        # Validate codec support
+        # -----------------------------
         if self.vcodec.extension.upper() not in self.config["profiles"]["video"]:
             raise ValueError(f"Video Codec {self.vcodec} is not supported by Netflix")
-
-        if self.range[0].name not in list(self.config["profiles"]["video"][self.vcodec.extension.upper()].keys()) and self.vcodec != Video.Codec.AVC and self.vcodec != Video.Codec.VP9:
-            self.log.error(f"Video range {self.range[0].name} is not supported by Video Codec: {self.vcodec}")
-            sys.exit(1)
-
-        if len(self.range) > 1:
-            self.log.error(f"Multiple video range is not supported right now.")
-            sys.exit(1)
-        
-        if self.vcodec == Video.Codec.AVC and self.range[0] != Video.Range.SDR:
-            self.log.error(f"H.264 Video Codec only supports SDR")
-            sys.exit(1)
-
+    
+        # -----------------------------
+        # HYBRID MODE FIX
+        # -----------------------------
+        if self.range[0] == Video.Range.HYBRID:
+            # Only allowed for HEVC
+            if self.vcodec != Video.Codec.HEVC:
+                self.log.error("HYBRID mode is only supported for HEVC codec.")
+                sys.exit(1)
+    
+            self.log.info("HYBRID mode detected → Skipping standard range validation")
+            # Skip all range validation completely
+        else:
+            # Normal validation path (non-HYBRID)
+            if self.range[0].name not in list(self.config["profiles"]["video"][self.vcodec.extension.upper()].keys()) \
+                    and self.vcodec not in (Video.Codec.AVC, Video.Codec.VP9):
+    
+                self.log.error(f"Video range {self.range[0].name} is not supported by Video Codec: {self.vcodec}")
+                sys.exit(1)
+    
+            if len(self.range) > 1:
+                self.log.error("Multiple video range is not supported right now.")
+                sys.exit(1)
+    
+            if self.vcodec == Video.Codec.AVC and self.range[0] != Video.Range.SDR:
+                self.log.error("H.264 Video Codec only supports SDR")
+                sys.exit(1)
+    
+        # -----------------------------
+        # Final profile resolution
+        # -----------------------------
         self.profiles = self.get_profiles()
-        self.log.info("Intializing a MSL client")
+    
+        self.log.info("Initializing a MSL client")
         self.get_esn()
         scheme = KeyExchangeSchemes.AsymmetricWrapped
         self.log.info(f"Scheme: {scheme}")
-
-
+    
         self.msl = MSL.handshake(
             scheme=scheme,
             session=self.session,
@@ -367,6 +533,7 @@ class NF(Service):
             sender=self.esn.data,
             cache=self.cache.get("MSL")
         )
+    
         cookie = self.session.cookies.get_dict()
         self.userauthdata = UserAuthentication.NetflixIDCookies(
             netflixid=cookie["NetflixId"],
@@ -376,25 +543,66 @@ class NF(Service):
 
     def get_profiles(self):
         result_profiles = []
-
+    
+        # -------------------------------
+        # AVC logic (unchanged)
+        # -------------------------------
         if self.vcodec == Video.Codec.AVC:
             if self.requested_profiles is not None:
-                for requested_profiles in self.requested_profiles:
-                    result_profiles.extend(flatten(list(self.config["profiles"]["video"][self.vcodec.extension.upper()][requested_profiles])))
+                for req in self.requested_profiles:
+                    result_profiles.extend(
+                        flatten(list(self.config["profiles"]["video"][self.vcodec.extension.upper()][req]))
+                    )
                 return result_profiles
-                
-            result_profiles.extend(flatten(list(self.config["profiles"]["video"][self.vcodec.extension.upper()].values())))
+    
+            result_profiles.extend(
+                flatten(list(self.config["profiles"]["video"][self.vcodec.extension.upper()].values()))
+            )
             return result_profiles
-
-        # Handle case for codec VP9
+    
+        # -------------------------------
+        # VP9 logic (unchanged)
+        # -------------------------------
         if self.vcodec == Video.Codec.VP9 and self.range[0] != Video.Range.HDR10:
-            result_profiles.extend(self.config["profiles"]["video"][self.vcodec.extension.upper()].values())
+            result_profiles.extend(
+                self.config["profiles"]["video"][self.vcodec.extension.upper()].values()
+            )
             return result_profiles
+    
+        # -------------------------------
+        # HEVC Hybrid mode (FIXED)
+        # -------------------------------
+        if self.vcodec == Video.Codec.HEVC and self.range[0] == Video.Range.HYBRID:
+            self.log.info("HYBRID mode detected → Using HDR10 + DV profiles")
+        
+            hevc_profiles = self.config["profiles"]["video"][self.vcodec.extension.upper()]
+        
+            result_profiles = []
+        
+            # 1. HDR10 FIRST
+            if "HDR10" in hevc_profiles:
+                result_profiles += hevc_profiles["HDR10"]
+        
+            # 2. HDR10P (some titles use this instead of HDR10)
+            if "HDR10P" in hevc_profiles:
+                result_profiles += hevc_profiles["HDR10P"]
+        
+            # 3. DV LAST (IMPORTANT!)
+            if "DV" in hevc_profiles:
+                result_profiles += hevc_profiles["DV"]
+        
+            return result_profiles
+    
+        # -------------------------------
+        # Normal HEVC (non HYBRID)
+        # -------------------------------
         for profiles in self.config["profiles"]["video"][self.vcodec.extension.upper()]:
-            for range in self.range:
-                if range in profiles:
-                    result_profiles.extend(self.config["profiles"]["video"][self.vcodec.extension.upper()][range.name])
-                    # sys.exit(1)
+            for r in self.range:
+                if r in profiles:
+                    result_profiles.extend(
+                        self.config["profiles"]["video"][self.vcodec.extension.upper()][r.name]
+                    )
+    
         self.log.debug(f"Result_profiles: {result_profiles}")
         return result_profiles
         

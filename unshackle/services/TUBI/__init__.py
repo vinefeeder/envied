@@ -6,16 +6,19 @@ import re
 import sys
 import uuid
 from collections.abc import Generator
-from typing import Any
+from http.cookiejar import MozillaCookieJar
+from typing import Any, Optional
 
 import click
 from langcodes import Language
+from pyplayready.cdm import Cdm as PlayReadyCdm
+from unshackle.core.credential import Credential
 from unshackle.core.downloaders import aria2c, requests
 from unshackle.core.manifests import DASH
 from unshackle.core.search_result import SearchResult
 from unshackle.core.service import Service
 from unshackle.core.titles import Episode, Movie, Movies, Series, Title_T, Titles_T
-from unshackle.core.tracks import Chapter, Chapters, Subtitle, Track, Tracks
+from unshackle.core.tracks import Audio, Chapter, Chapters, Subtitle, Track, Tracks
 
 
 class TUBI(Service):
@@ -23,12 +26,17 @@ class TUBI(Service):
     Service code for TubiTV streaming service (https://tubitv.com/)
 
     \b
-    Version: 1.0.3
+    Version: 1.0.5
     Author: stabbedbybrick
-    Authorization: None
+    Authorization: Cookies (Optional)
+    Geofence: Locked to whatever region the user is in (API only)
     Robustness:
-      Widevine:
-        L3: 720p, AAC2.0
+        Widevine:
+            L3: 1080p, AAC2.0
+        PlayReady:
+            SL2000: 1080p, AAC2.0
+        Clear:
+            1080p, AAC2.0
 
     \b
     Tips:
@@ -36,11 +44,13 @@ class TUBI(Service):
             /series/300001423/gotham
             /tv-shows/200024793/s01-e01-pilot
             /movies/589279/the-outsiders
+        - Use '-v H.265' to request HEVC tracks.
 
     \b
     Notes:
-        - Due to the structure of the DASH manifest and requests downloader failing to output progress,
-          aria2c is used as the downloader no matter what downloader is specified in the config.
+        - Authentication is currently not required, but cookies are used if provided.
+        - If 1080p exists, it's currently only available as H.265.
+        - Unshackle fails to mux properly when n_m3u8dl_re is used, so aria2c is forced as downloader.
         - Search is currently disabled.
     """
 
@@ -56,6 +66,19 @@ class TUBI(Service):
     def __init__(self, ctx, title):
         self.title = title
         super().__init__(ctx)
+
+        cdm = ctx.obj.cdm
+        self.drm_system = "playready" if isinstance(cdm, PlayReadyCdm) else "widevine"
+
+        vcodec = ctx.parent.params.get("vcodec")
+        self.vcodec = "H264" if vcodec is None else "H265"
+
+    def authenticate(self, cookies: Optional[MozillaCookieJar] = None, credential: Optional[Credential] = None) -> None:
+        super().authenticate(cookies, credential)
+        self.auth_token = None
+        if cookies is not None:
+            self.auth_token = next((cookie.value for cookie in cookies if cookie.name == "at"), None)
+            self.session.headers.update({"Authorization": f"Bearer {self.auth_token}"})
 
     # Disable search for now
     # def search(self) -> Generator[SearchResult, None, None]:
@@ -99,12 +122,18 @@ class TUBI(Service):
             raise ValueError("Could not parse ID from title - is the URL correct?")
 
         params = {
-            "platform": "android",
-            "content_id": content_id,
+            "app_id": "tubitv",
+            "platform": "web", # web, android, androidtv
             "device_id": str(uuid.uuid4()),
+            "content_id": content_id,
+            "limit_resolutions[]": [
+                "h264_1080p",
+                "h265_1080p",
+            ],
             "video_resources[]": [
+                "dash_widevine_nonclearlead",
+                "dash_playready_psshv0",
                 "dash",
-                "dash_widevine",
             ],
         }
 
@@ -175,15 +204,34 @@ class TUBI(Service):
             )
 
     def get_tracks(self, title: Title_T) -> Tracks:
-        if not title.data.get("video_resources"):
+        if not (resources := title.data.get("video_resources")):
             self.log.error(" - Failed to obtain video resources. Check geography settings.")
             self.log.info(f"Title is available in: {title.data.get('country')}")
             sys.exit(1)
 
-        self.manifest = title.data["video_resources"][0]["manifest"]["url"]
-        self.license = title.data["video_resources"][0].get("license_server", {}).get("url")
+        codecs = [x.get("codec") for x in resources]
+        if not any(self.vcodec in x for x in codecs):
+            raise ValueError(f"Could not find a {self.vcodec} video resource for this title")
 
-        tracks = DASH.from_url(url=self.manifest, session=self.session).to_tracks(language=title.language)
+        resource = next((
+            x for x in resources
+            if self.drm_system in x.get("type", "") and self.vcodec in x.get("codec", "")
+        ), None) or next((
+            x for x in resources
+            if self.drm_system not in x.get("type", "") and
+            "dash" in x.get("type", "") and
+            self.vcodec in x.get("codec", "")
+        ), None)
+        if not resource:
+            raise ValueError("Could not find a video resource for this title")
+
+        manifest = resource.get("manifest", {}).get("url")
+        if not manifest:
+            raise ValueError("Could not find a manifest for this title")
+        
+        title.data["license_url"] = resource.get("license_server", {}).get("url")
+
+        tracks = DASH.from_url(url=manifest, session=self.session).to_tracks(language=title.language)
         for track in tracks:
             rep_base = track.data["dash"]["representation"].find("BaseURL")
             if rep_base is not None:
@@ -193,10 +241,10 @@ class TUBI(Service):
                 track.descriptor = Track.Descriptor.URL
                 track.downloader = aria2c
 
-        for track in tracks.audio:
-            role = track.data["dash"]["adaptation_set"].find("Role")
-            if role is not None and role.get("value") in ["description", "alternative", "alternate"]:
-                track.descriptive = True
+            if isinstance(track, Audio):
+                role = track.data["dash"]["adaptation_set"].find("Role")
+                if role is not None and role.get("value") in ["description", "alternative", "alternate"]:
+                    track.descriptive = True
 
         if title.data.get("subtitles"):
             tracks.add(
@@ -233,11 +281,21 @@ class TUBI(Service):
     def get_widevine_service_certificate(self, **_: Any) -> str:
         return None
 
-    def get_widevine_license(self, challenge: bytes, **_: Any) -> bytes:
-        if not self.license:
+    def get_widevine_license(self, *, challenge: bytes, title: Episode | Movie, track: Any) -> bytes | str | None:
+        if not (license_url := title.data.get("license_url")):
             return None
 
-        r = self.session.post(url=self.license, data=challenge)
+        r = self.session.post(url=license_url, data=challenge)
+        if r.status_code != 200:
+            raise ConnectionError(r.text)
+
+        return r.content
+    
+    def get_playready_license(self, *, challenge: bytes, title: Episode | Movie, track: Any) -> bytes | str | None:
+        if not (license_url := title.data.get("license_url")):
+            return None
+
+        r = self.session.post(url=license_url, data=challenge)
         if r.status_code != 200:
             raise ConnectionError(r.text)
 
