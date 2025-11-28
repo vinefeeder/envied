@@ -65,10 +65,7 @@ from unshackle.core.utils.click_types import (LANGUAGE_RANGE, QUALITY_LIST, SEAS
 from unshackle.core.utils.collections import merge_dict
 from unshackle.core.utils.subprocess import ffprobe
 from unshackle.core.vaults import Vaults
-
-
 from beaupy import select_multiple, Config
-
 
 class dl:
     @staticmethod
@@ -258,6 +255,13 @@ class dl:
         help="Exclude Dolby Atmos audio tracks when selecting audio.",
     )
     @click.option(
+        "--select-titles",
+        is_flag=True,
+        default=False,
+        help="Interactively select downloads from a list. Only use with Series to select Episodes",
+    )
+
+    @click.option(
         "-w",
         "--wanted",
         type=SEASON_RANGE,
@@ -270,12 +274,6 @@ class dl:
         is_flag=True,
         default=False,
         help="Download only the single most recent episode available.",
-    )
-    @click.option(
-        "--select-titles",
-        is_flag=True,
-        default=False,
-        help="Interactively select downloads from a list. Only use with Series to select Episodes",
     )
     @click.option(
         "-l",
@@ -312,7 +310,6 @@ class dl:
         default=False,
         help="Use exact language matching (no variants). With this flag, -l es-419 matches ONLY es-419, not es-ES or other variants.",
     )
-
     @click.option(
         "--proxy",
         type=str,
@@ -734,9 +731,9 @@ class dl:
         range_: list[Video.Range],
         channels: float,
         no_atmos: bool,
+        select_titles: bool,
         wanted: list[str],
         latest_episode: bool,
-        select_titles: bool, 
         lang: list[str],
         v_lang: list[str],
         a_lang: list[str],
@@ -780,7 +777,7 @@ class dl:
 
         # Check if dovi_tool is available when hybrid mode is requested
         if any(r == Video.Range.HYBRID for r in range_):
-            from envied.core.binaries import DoviTool
+            from unshackle.core.binaries import DoviTool
 
             if not DoviTool:
                 self.log.error("Unable to run hybrid mode: dovi_tool not detected")
@@ -909,7 +906,6 @@ class dl:
         console.print(Padding(titles.tree(verbose=list_titles), (0, 5)))
         if list_titles:
             return
-        
         # modification to enable beaupy module to list titles for download for manual selection 
         # use --select-titles after dl in unshackle command
         
@@ -943,8 +939,6 @@ class dl:
                 if i not in keep:
                     del titles[i]
         #  end modification
-        
-
         # Determine the latest episode if --latest-episode is set
         latest_episode_id = None
         if latest_episode and isinstance(titles, Series) and len(titles) > 0:
@@ -1291,7 +1285,7 @@ class dl:
                             f"Required languages found ({', '.join(require_subs)}), downloading all available subtitles"
                         )
                     elif s_lang and "all" not in s_lang:
-                        from envied.core.utilities import is_exact_match
+                        from unshackle.core.utilities import is_exact_match
 
                         match_func = is_exact_match if exact_lang else is_close_match
 
@@ -1414,6 +1408,7 @@ class dl:
                         kept_tracks.extend(title.tracks.subtitles)
                     if keep_chapters:
                         kept_tracks.extend(title.tracks.chapters)
+                    kept_tracks.extend(title.tracks.attachments)
 
                     title.tracks = Tracks(kept_tracks)
 
@@ -1500,6 +1495,7 @@ class dl:
                             )
                         ):
                             download.result()
+
             except KeyboardInterrupt:
                 console.print(Padding(":x: Download Cancelled...", (0, 5, 1, 5)))
                 if self.debug_logger:
@@ -1892,25 +1888,32 @@ class dl:
         if not drm:
             return
 
+        track_quality = None
         if isinstance(track, Video) and track.height:
-            pass
+            track_quality = track.height
 
         if isinstance(drm, Widevine):
             if not isinstance(self.cdm, (WidevineCdm, DecryptLabsRemoteCDM)) or (
                 isinstance(self.cdm, DecryptLabsRemoteCDM) and self.cdm.is_playready
             ):
-                widevine_cdm = self.get_cdm(self.service, self.profile, drm="widevine")
+                widevine_cdm = self.get_cdm(self.service, self.profile, drm="widevine", quality=track_quality)
                 if widevine_cdm:
-                    self.log.info("Switching to Widevine CDM for Widevine content")
+                    if track_quality:
+                        self.log.info(f"Switching to Widevine CDM for Widevine {track_quality}p content")
+                    else:
+                        self.log.info("Switching to Widevine CDM for Widevine content")
                     self.cdm = widevine_cdm
 
         elif isinstance(drm, PlayReady):
             if not isinstance(self.cdm, (PlayReadyCdm, DecryptLabsRemoteCDM)) or (
                 isinstance(self.cdm, DecryptLabsRemoteCDM) and not self.cdm.is_playready
             ):
-                playready_cdm = self.get_cdm(self.service, self.profile, drm="playready")
+                playready_cdm = self.get_cdm(self.service, self.profile, drm="playready", quality=track_quality)
                 if playready_cdm:
-                    self.log.info("Switching to PlayReady CDM for PlayReady content")
+                    if track_quality:
+                        self.log.info(f"Switching to PlayReady CDM for PlayReady {track_quality}p content")
+                    else:
+                        self.log.info("Switching to PlayReady CDM for PlayReady content")
                     self.cdm = playready_cdm
 
         if isinstance(drm, Widevine):
@@ -1930,7 +1933,7 @@ class dl:
 
             with self.DRM_TABLE_LOCK:
                 pssh_display = self.truncate_pssh_for_display(drm.pssh.dumps(), "Widevine")
-                cek_tree = Tree(Text.assemble(("Widevine", "cyan"), (f"({pssh_display})", "text"), overflow="ellipses"))
+                cek_tree = Tree(Text.assemble(("Widevine", "cyan"), (f"({pssh_display})", "text"), overflow="fold"))
                 pre_existing_tree = next(
                     (x for x in table.columns[0].cells if isinstance(x, Tree) and x.label == cek_tree.label), None
                 )
@@ -2074,12 +2077,21 @@ class dl:
                 if export:
                     keys = {}
                     if export.is_file():
-                        keys = jsonpickle.loads(export.read_text(encoding="utf8"))
+                        keys = jsonpickle.loads(export.read_text(encoding="utf8")) or {}
                     if str(title) not in keys:
                         keys[str(title)] = {}
                     if str(track) not in keys[str(title)]:
                         keys[str(title)][str(track)] = {}
-                    keys[str(title)][str(track)].update(drm.content_keys)
+
+                    track_data = keys[str(title)][str(track)]
+                    track_data["url"] = track.url
+                    track_data["descriptor"] = track.descriptor.name
+
+                    if "keys" not in track_data:
+                        track_data["keys"] = {}
+                    for kid, key in drm.content_keys.items():
+                        track_data["keys"][kid.hex] = key
+
                     export.write_text(jsonpickle.dumps(keys, indent=4), encoding="utf8")
 
         elif isinstance(drm, PlayReady):
@@ -2219,12 +2231,21 @@ class dl:
                 if export:
                     keys = {}
                     if export.is_file():
-                        keys = jsonpickle.loads(export.read_text(encoding="utf8"))
+                        keys = jsonpickle.loads(export.read_text(encoding="utf8")) or {}
                     if str(title) not in keys:
                         keys[str(title)] = {}
                     if str(track) not in keys[str(title)]:
                         keys[str(title)][str(track)] = {}
-                    keys[str(title)][str(track)].update(drm.content_keys)
+
+                    track_data = keys[str(title)][str(track)]
+                    track_data["url"] = track.url
+                    track_data["descriptor"] = track.descriptor.name
+
+                    if "keys" not in track_data:
+                        track_data["keys"] = {}
+                    for kid, key in drm.content_keys.items():
+                        track_data["keys"][kid.hex] = key
+
                     export.write_text(jsonpickle.dumps(keys, indent=4), encoding="utf8")
 
     @staticmethod

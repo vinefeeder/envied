@@ -66,8 +66,6 @@ def main(version: bool, debug: bool) -> None:
     )
 
 
-
-
 @atexit.register
 def cleanup():
     """Clean up resources on exit."""

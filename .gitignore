@@ -1,8 +1,5 @@
 # unshackle
-Logs/
-Cache/
 unshackle.yaml
-unshackle/unshackle.yaml
 unshackle.yml
 update_check.json
 *.mkv
@@ -10,7 +7,7 @@ update_check.json
 *.exe
 *.dll
 *.crt
-#*.wvd
+*.wvd
 *.prd
 *.der
 *.pem
@@ -18,8 +15,6 @@ update_check.json
 *.db
 *.ttf
 *.otf
-*.json
-*.yml
 device_cert
 device_client_id_blob
 device_private_key
@@ -27,10 +22,11 @@ device_vmp_blob
 unshackle/cache/
 unshackle/cookies/
 unshackle/certs/
-#unshackle/WVDs/
+unshackle/WVDs/
 unshackle/PRDs/
 temp/
-#services/
+logs/
+services/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -222,6 +218,7 @@ cython_debug/
 #  you could uncomment the following to ignore the entire vscode folder
 .vscode/
 .github/copilot-instructions.md
+CLAUDE.md
 
 # Ruff stuff:
 .ruff_cache/
