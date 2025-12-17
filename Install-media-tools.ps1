@@ -51,6 +51,36 @@ try {
   Push-Location $WorkDir
 
   # -----------------------------
+  # Install FFmpeg (full build, Windows x64) from GitHub ZIP
+  # -----------------------------
+  $ffmpegZip = Join-Path $WorkDir "ffmpeg-full_build.zip"
+  Download-File `
+    "https://github.com/GyanD/codexffmpeg/releases/download/2025-12-14-git-3332b2db84/ffmpeg-2025-12-14-git-3332b2db84-full_build.zip" `
+    $ffmpegZip
+
+  $ffmpegExtract = Join-Path $WorkDir "ffmpeg"
+  New-Item -ItemType Directory -Force -Path $ffmpegExtract | Out-Null
+  Expand-Archive -Path $ffmpegZip -DestinationPath $ffmpegExtract -Force
+
+  # Find the extracted "bin" folder (contains ffmpeg.exe etc.)
+  $ffmpegBin = Get-ChildItem $ffmpegExtract -Recurse -Directory |
+               Where-Object { $_.Name -ieq "bin" } |
+               Select-Object -First 1
+
+  if (-not $ffmpegBin) {
+    throw "FFmpeg bin directory not found after extraction."
+  }
+
+  Get-ChildItem $ffmpegBin.FullName -File |
+    Where-Object { $_.Name -match '^ff(mpeg|probe|play)\.exe$' } |
+    ForEach-Object {
+      Copy-Item -Force $_.FullName (Join-Path $BinDir $_.Name)
+    }
+
+  Write-Host "FFmpeg installed to $BinDir"
+
+
+  # -----------------------------
   # Install Bento4 (mp4decrypt.exe, etc.)
   # -----------------------------
   $bentoZip = Join-Path $WorkDir "Bento4.zip"
