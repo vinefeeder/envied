@@ -1,5 +1,15 @@
 # Install-media-tools.ps1
 # Run in elevated PowerShell:
+# Inside the VM:
+
+# Open Start
+
+# Type PowerShell
+
+# Right-click Windows PowerShell → Run as administrator
+
+# chdir to the location of this script
+
 #   powershell -ExecutionPolicy Bypass -File .\Install-media-tools.ps1
 
 $ErrorActionPreference = "Stop"
@@ -53,6 +63,30 @@ try {
     Where-Object { $_.FullName -match "\\bin\\.*\.exe$" } |
     ForEach-Object { Copy-Item -Force $_.FullName $BinDir }
 
+  # -----------------------------
+  # Install MKVToolNix (Windows x64)
+  # -----------------------------
+  $mkvInstaller = Join-Path $WorkDir "mkvtoolnix-64-bit-96.0-setup.exe"
+  Download-File `
+    "https://mkvtoolnix.download/windows/releases/96.0/mkvtoolnix-64-bit-96.0-setup.exe" `
+    $mkvInstaller
+
+  # Silent install (NSIS): /S = silent
+  # Note: no UI will appear; wait for it to finish.
+  Start-Process -FilePath $mkvInstaller -ArgumentList "/S" -Wait
+
+  # Optional: add MKVToolNix install dir to PATH if present
+  $mkvDefaultPath = "C:\Program Files\MKVToolNix"
+  if (Test-Path $mkvDefaultPath) {
+    # If you kept Add-ToMachinePath, use that:
+    Add-ToMachinePath $mkvDefaultPath
+
+    # Or if you switched to Add-ToBestPath, use that instead:
+    # Add-ToBestPath $mkvDefaultPath
+  } else {
+    Write-Host "MKVToolNix installed, but default path not found: $mkvDefaultPath (maybe different install location)"
+  }
+  
   # -----------------------------
   # Install N_m3u8DL-RE (Windows x64)
   # -----------------------------
