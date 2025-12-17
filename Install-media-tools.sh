@@ -1,3 +1,7 @@
+# Thanks Akirainblack for providing this routine
+# run script as superuser using command:-
+# sudo bash Install-media-tools.sh
+
 # Install MKVToolNix from Ubuntu repos
 apt-get update && \
     apt-get install -y mkvtoolnix mkvtoolnix-gui && \
