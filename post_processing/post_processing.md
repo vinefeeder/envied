@@ -7,9 +7,9 @@ Using a post-processor on the downloaded results may provide a solution.
 I have found two unmet needs:
 
 * Extract srt subtitles
-* Convert mkv output to mp4 (o5 any other video container format, with code adjustment)
+* Convert mkv output to mp4 (or any other video container format, with code adjustment)
 
-Here are two scripts which operate from a root folder (downloads - fo instance), and operate on all the mkv files found within. The original files are left in place - for you to remove as necessary.
+Here are two scripts which operate from a root folder (downloads - for instance), and operate on all the mkv files found within. The original files are left in place - for you to remove as necessary.
 
 ## Extract srt subtitles
 
@@ -27,5 +27,11 @@ If you start with a full mkv container - video, audio and subtitles tracks - and
 
 ## Convert to mp4
 
-Run  'python mkv_to_mp4.py'  in the root folder with mkv files. 
-The option: --dry-run will allow checking all is well before converion.
+Run  
+* 'python mkv_to_mp4.py'  
+
+in the root folder with mkv files. 
+
+The option: --dry-run will allow checking all is well before converion.  
+  
+Conversion to other formats is complex and not suited to this simple routine as the audio/video codecs would each need need re-coding to suit the required output.
