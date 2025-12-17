@@ -2,9 +2,9 @@
 # run script as superuser using command:-
 # sudo bash Install-media-tools.sh
 
-# Install MKVToolNix from Ubuntu repos
+# Install MKVToolNix and ffmpeg from Ubuntu repos
 apt-get update && \
-    apt-get install -y mkvtoolnix mkvtoolnix-gui && \
+    apt-get install -y mkvtoolnix mkvtoolnix-gui ffmpeg && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Bento4 (mp4decrypt)
