@@ -136,7 +136,7 @@ try {
   # -----------------------------
   $shakaExe = Join-Path $BinDir "shaka-packager.exe"
   Download-File `
-    "https://github.com/shaka-project/shaka-packager/releases/download/v3.4.2/packager-win-x64.exe" `
+    "https://github.com/shaka-project/shaka-packager/releases/download/v2.6.1/packager-win-x64.exe" `
     $shakaExe
 
   # -----------------------------
