@@ -915,7 +915,9 @@ class dl:
 
             
             beaupy_titles = [
-                f"{i+1} {t.title}, {t.season}, {t.number}"
+                # thanks CodeName393 for the improvedformatting idea
+                f"{i+1}. {t.title} - S{t.season:02}E{t.number:02}"
+                + (f" - {t.name}" if t.name else "")
                 for i, t in enumerate(titles)
             ]
             
