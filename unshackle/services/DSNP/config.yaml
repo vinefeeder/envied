@@ -1,27 +1,52 @@
-CLIENT_ID: disney-svod-3d9324fc
-CLIENT_VERSION: "9.10.0"
+certificate: |
+  CAUSugUKtAIIAxIQbj3s4jO5oUyWjDWqjfr9WRjA2afZBSKOAjCCAQoCggEBALhKWfnyA+FGn5P3tl6ffDjoGq2Oq86hKGl6aZIaGaF7XHPO5mIk7Q35ml
+  ZIgg1A458Udb4eXRws1n+kJFqtZXCY5S1yElLP0Om1WQsoEY2stpl+PZTGnVv/CsOJGKQ8K4KMr7rKjZem9lA9BrBoxgfXY3tbwlnSf3wTEohyANb5Qfpa
+  xsU4v8tQDA8PcjzzV9ICodl6crcFZhAy4QMNXfbWOv/ZrGFx5blSXrzP1sMQ64IY8bjUYw4coZM34NDhu8aCA692g8k2mTz2494x7u3Is8v7RKC9ZNiETE
+  K5/4oeVclXPpelNQokR4uvggnCD1L2EULG/pp6wnk1yWNNLxcCAwEAAToHYmFtdGVjaBKAA2FqHlqkE7EUmdOLiCi0hy5jRgBDJrU1CWNHfH6r2i6s5T5k
+  6LK7ZfD65Tv6uyqq1k82PsDz4++kxbpfJDZaypFbae4XPc6lZxRCc5X0toX/x9TftOQQ4N82l5Hxoha569EPRkrnNy7rO7xrRILa3ZVj1alttEnEEjxEuw
+  SV8usdlUg8/LvLA2C59T/HA2I77k7yVbTrVdy0f81r2l+E2SslivCy1JD3xKlgoaKl4xBnRxItWt8+DCw1Xm2lemYl2LGoh1Wk9gvlXQvr2Jv2+dFX3RNs
+  i5sd00KS9sePszfjoTkQ6fmpRd7ZgFCGFWYB9JZ92aGUFQRE14OTST2uwSf32YCfsoATDNs4V6dB8YDoTGKFGrcoc4gtHPKySGNt7z/fOW4/01ZGzKqoVY
+  Fp3jPq7R0qyt5P6fU5NshbLh5VKcnQvwg62BuKsdwV9u4NV36b2a546hGRl/GBneQ+QDA7NRrgITR33Sz02Oq8yJr3sy24GfZRTbtLJ4qiWkjtw==
 
-API_KEY: "ZGlzbmV5JmFuZHJvaWQmMS4wLjA.bkeb0m230uUhv8qrAXuNu39tbE_mD5EEhM_NAcohjyA"
-CONFIG_URL: https://bam-sdk-configs.bamgrid.com/bam-sdk/v5.0/disney-svod-3d9324fc/android/v9.10.0/google/tv/prod.json
+## config ( {configVersion}/{clientId}/{deviceFamily}/{sdkVersion}/{applicationRuntime}/{deviceProfile}/{environment} ) ##
+# Browser (windows, chrome) : /browser/v34.2/windows/chrome/prod.json
+# Android Phone : /android/v12.0.0/google/handset/prod.json
+# Android TV : /android/v12.0.0/google/tv/prod.json
+# Amazon Fire TV : /android/v12.0.0/amazon/tv/prod.json
 
-PAGE_SIZE_SETS: 15
-PAGE_SIZE_CONTENT: 30
-SEARCH_QUERY_TYPE: ge
-BAM_PARTNER: disney
-EXPLORE_VERSION: v1.3
-DEVICE_FAMILY: browser
-DEVICE_PROFILE: tv
-APPLICATION_RUNTIME: android
+endpoints:
+  config: "https://client-sdk-configs.bamgrid.com/bam-sdk/v7.0/disney-svod-3d9324fc/android/v13.0.0/google/tv/prod.json"
 
-HEADERS:
-  User-Agent: BAMSDK/v9.10.0 (disney-svod-3d9324fc 2.26.2-rc1.0; v5.0/v9.10.0; android; tv)
-  x-application-version: google
-  x-bamsdk-platform-id: android-tv
-  x-bamsdk-client-id: disney-svod-3d9324fc
-  x-bamsdk-platform: android-tv
-  x-bamsdk-version: "9.10.0"
-  Accept-Encoding: gzip
-  Origin: https://www.disneyplus.com
+## user_agent ##
+# android-phone : BAMSDK/v13.3.0 (disney-svod-3d9324fc 4.18.1+rc6-2025.11.05.0; v7.0/v13.0.0; android; phone)
+# android-tv : BAMSDK/v13.3.0 (disney-svod-3d9324fc 4.18.1+rc6-2025.11.05.0; v7.0/v13.0.0; android; tv)
 
-LICENSE: https://disney.playback.edge.bamgrid.com/widevine/v1/obtain-license
-PLAYREADY_LICENSE: https://disney.playback.edge.bamgrid.com/playready/v1/obtain-license.asmx
+## api_key ##
+# browser : ZGlzbmV5JmJyb3dzZXImMS4wLjA.Cu56AgSfBTDag5NiRA81oLHkDZfu5L3CKadnefEAY84
+# android : ZGlzbmV5JmFuZHJvaWQmMS4wLjA.bkeb0m230uUhv8qrAXuNu39tbE_mD5EEhM_NAcohjyA
+
+## yp_service_id ##
+# browser : 63626081279ebe65eb50fb54
+# android : 624b805dafc5c73635b1a216
+
+bamsdk:
+  sdk_version: "13.3.0"
+  application_version: "4.18.1+rc6-2025.11.05.0"
+  explore_version: "v1.11"
+  client: "disney-svod-3d9324fc"
+  user_agent: "BAMSDK/v13.3.0 (disney-svod-3d9324fc 4.18.1+rc6-2025.11.05.0; v7.0/v13.0.0; android; tv)"
+  api_key: "ZGlzbmV5JmFuZHJvaWQmMS4wLjA.bkeb0m230uUhv8qrAXuNu39tbE_mD5EEhM_NAcohjyA"
+  yp_service_id: "624b805dafc5c73635b1a216"
+
+device:
+  family: "android"
+  profile: "tv"
+  platform: "android/google/tv" # {deviceFamily}/{applicationRuntime}/{deviceProfile}
+  platform_id: "android-tv"
+  applicationRuntime: "android"
+  operatingSystem: "Android"
+  operatingSystemVersion: "16"
+  deviceLanguage: "ko" # en
+
+profile:
+  index: 0
