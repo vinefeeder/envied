@@ -930,17 +930,19 @@ class dl:
                 return_indices=True,
                 
             )
-
+        
             # Keep indices unique & ordered
             selected_idx = sorted(set(selected_idx))
             keep = set(selected_idx)
 
             # In-place filter: delete everything not selected (walk backwards!)
-            # need to delete from original list to keep super classes meta data
+            # need to delete from original list to keep super class' meta data
             for i in range(len(titles) - 1, -1, -1):
                 if i not in keep:
                     del titles[i]
+            console.print(Padding(f"[rgb(205,214,244)]{len(titles)} {'titles' if len(titles) > 1 else 'title'} selected for download[/rgb(205,214,244)]", (0, 5))) 
         #  end modification
+
         # Determine the latest episode if --latest-episode is set
         latest_episode_id = None
         if latest_episode and isinstance(titles, Series) and len(titles) > 0:
