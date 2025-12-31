@@ -923,7 +923,7 @@ class dl:
             
             selected_idx = select_multiple(
                 beaupy_titles,
-                preprocessor=lambda val: f"[rgb(245,194,231)]{val}[/rgb(245,194,231)]",
+                preprocessor=lambda val: f"[rgb(205,214,244)]{val}[/rgb(205,214,244)]",
                 minimal_count=1,
                 page_size=8,
                 pagination=True,
