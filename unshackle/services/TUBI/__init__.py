@@ -26,7 +26,7 @@ class TUBI(Service):
     Service code for TubiTV streaming service (https://tubitv.com/)
 
     \b
-    Version: 1.0.5
+    Version: 1.0.6
     Author: stabbedbybrick
     Authorization: Cookies (Optional)
     Geofence: Locked to whatever region the user is in (API only)
@@ -54,7 +54,7 @@ class TUBI(Service):
         - Search is currently disabled.
     """
 
-    TITLE_RE = r"^(?:https?://(?:www\.)?tubitv\.com?)?/(?P<type>movies|series|tv-shows)/(?P<id>[a-z0-9-]+)"
+    TITLE_RE = r"^(?:https?://(?:www\.)?tubitv\.com?)?/(?:[a-z]{2}-[a-z]{2}/)?(?P<type>movies|series|tv-shows)/(?P<id>[a-z0-9-]+)"
 
     @staticmethod
     @click.command(name="TUBI", short_help="https://tubitv.com/", help=__doc__)
@@ -275,6 +275,9 @@ class TUBI(Service):
             chapters.append(Chapter(name="Early Credits", timestamp=float(cue_points["early_credits_start"])))
         if cue_points.get("postlude"):
             chapters.append(Chapter(name="End Credits", timestamp=float(cue_points["postlude"])))
+
+        if not any(c.timestamp == "00:00:00.000" for c in chapters):
+            chapters.append(Chapter(timestamp=0))
 
         return sorted(chapters, key=lambda x: x.timestamp)
 
