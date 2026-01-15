@@ -678,4 +678,3 @@ This release includes contributions from:
 - Enhanced dl.py command processing for hybrid mode support
 - Improved core titles (episode/movie) processing for HDR content
 - Extended tracks module with hybrid processing capabilities
-
