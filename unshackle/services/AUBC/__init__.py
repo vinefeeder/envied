@@ -24,7 +24,7 @@ class AUBC(Service):
     Service code for ABC iView streaming service (https://iview.abc.net.au/).
 
     \b
-    Version: 1.0.2
+    Version: 1.0.3
     Author: stabbedbybrick
     Authorization: None
     Robustness:
@@ -181,12 +181,14 @@ class AUBC(Service):
     def _series(self, title: str) -> Episode:
         data = self._request("GET", "/v3/series/{}".format(title))
 
+        seasons = data if isinstance(data, list) else [data]
+
         episodes = [
             self.create_episode(episode)
-            for season in data
-            for episode in reversed(season["_embedded"]["videoEpisodes"]["items"])
-            if season.get("episodeCount")
+            for season in seasons
+            for episode in season.get("_embedded", {}).get("videoEpisodes", {}).get("items", [])
         ]
+
         return Series(episodes)
 
     def _movie(self, data: dict) -> Movie:
@@ -213,20 +215,27 @@ class AUBC(Service):
     
     def create_episode(self, episode: dict) -> Episode:
         title = episode["showTitle"]
+        episode_id = episode.get("id", "")
         series_id = episode.get("analytics", {}).get("dataLayer", {}).get("d_series_id", "")
         episode_name = episode.get("analytics", {}).get("dataLayer", {}).get("d_episode_name", "")
-        number = re.search(r"Episode (\d+)", episode.get("displaySubtitle", ""))
+        episode_number = re.search(r"Episode (\d+)", episode.get("displaySubtitle", ""))
         name = re.search(r"S\d+\sEpisode\s\d+\s(.*)", episode_name)
-
         language = episode.get("analytics", {}).get("dataLayer", {}).get("d_language", "en")
+
+        season = int(series_id.split("-")[-1]) if series_id else 0
+        number = int(episode_number.group(1)) if episode_number else 0
+
+        if not number:
+            if match := re.search(r"[A-Z](\d{3})(?=S\d{2})", episode_id):
+                number = int(match.group(1))
 
         return Episode(
             id_=episode["id"],
             service=self.__class__,
             title=title,
-            season=int(series_id.split("-")[-1]) if series_id else 0,
-            number=int(number.group(1)) if number else 0,
-            name=name.group(1) if name else None,
+            season=season,
+            number=number,
+            name=name.group(1) if name else episode_name,
             data=episode,
             language=language,
         )

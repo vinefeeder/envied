@@ -5,10 +5,11 @@ import json
 import time
 from datetime import datetime
 from http.cookiejar import CookieJar
-from typing import Optional, Union
+from typing import Optional
 
 import click
 from langcodes import Language
+from pyplayready.cdm import Cdm as PlayReadyCdm
 
 from unshackle.core.constants import AnyTrack
 from unshackle.core.credential import Credential
@@ -24,7 +25,7 @@ class PCOK(Service):
     Version: 1.0.0
 
     Authorization: Cookies
-    Security: UHD@-- FHD@SL|L3
+    Security: UHD@-- FHD@SL*
 
     Tips: - The library of contents can be viewed without logging in at https://www.peacocktv.com/stream/tv
             See the footer for links to movies, news, etc. A US IP is required to view.
@@ -56,6 +57,9 @@ class PCOK(Service):
         self.title = title
         self.movie = movie
         self.cdm = ctx.obj.cdm
+        if not isinstance(self.cdm, PlayReadyCdm):
+            self.log.warning("PlayReady CDM not provided, exiting")
+            raise SystemExit(1)
 
         range_param = ctx.parent.params.get("range_")
         self.range = range_param[0].name if range_param else "SDR"
@@ -214,7 +218,7 @@ class PCOK(Service):
                         "vcodec": "H265" if self.vcodec == "H265" else "H264",
                     },
                     {
-                        "protection": "WIDEVINE",
+                        "protection": "PLAYREADY",
                         "container": "ISOBMFF",
                         "transport": "DASH",
                         "acodec": "AAC",
@@ -293,28 +297,6 @@ class PCOK(Service):
                 "X-Sky-Signature": self.create_signature_header(
                     method="POST",
                     path="/" + self.license_api.split("://", 2)[1].split("/", 1)[1],
-                    sky_headers={},
-                    body="",
-                    timestamp=int(time.time())
-                )
-            },
-            data=challenge
-        )
-        response.raise_for_status()
-        return response.content
-
-    def get_widevine_license(self, *, challenge: bytes, title: Title_T, track: AnyTrack) -> Optional[Union[bytes, str]]:
-        """Retrieve a Widevine license for a given track."""
-        if not self.license_api:
-            return None
-            
-        response = self.session.post(
-            url=self.license_api,
-            headers={
-                "Accept": "*",
-                "X-Sky-Signature": self.create_signature_header(
-                    method="POST",
-                    path="/" + self.license_api.split("://", 1)[1].split("/", 1)[1],
                     sky_headers={},
                     body="",
                     timestamp=int(time.time())

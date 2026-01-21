@@ -1,4 +1,5 @@
 endpoints:
-  base_url: "https://default.{}-{}.prd.api.discoveryplus.com"
+  template: "https://default.{}-{}.prd.api.discoveryplus.com"
+  default_url: "https://default.any-any.prd.api.discoveryplus.com"
 
 client_id: "b6746ddc-7bc7-471f-a16c-f6aaf0c34d26" # androidtv

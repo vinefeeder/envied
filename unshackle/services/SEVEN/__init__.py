@@ -23,7 +23,7 @@ class SEVEN(Service):
     Service code for 7Plus streaming service (https://7plus.com.au/).
 
     \b
-    Version: 1.0.0
+    Version: 1.0.1
     Author: stabbedbybrick
     Authorization: Cookies
     Geofence: AU (API and downloads)
@@ -412,7 +412,7 @@ class SEVEN(Service):
     def _series(self, content: dict, slug: str) -> List[Episode]:
         items = next((x for x in content.get("items", []) if x.get("type") == "shelfContainer"), {})
         episodes_shelf = next((x for x in items.get("items", []) if x.get("title") == "Episodes"), {})
-        seasons_container = next((x for x in episodes_shelf.get("items", []) if x.get("title") in ("Season", "Year")), {})
+        seasons_container = next((x for x in episodes_shelf.get("items", []) if x.get("title") in ("Season", "Year", "Bulletin")), {})
         
         season_ids = [
             item.get("items", [{}])[0].get("id")

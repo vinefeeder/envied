@@ -65,7 +65,7 @@ from unshackle.core.utils.click_types import (LANGUAGE_RANGE, QUALITY_LIST, SEAS
 from unshackle.core.utils.collections import merge_dict
 from unshackle.core.utils.subprocess import ffprobe
 from unshackle.core.vaults import Vaults
-from beaupy import select_multiple, Config
+
 
 class dl:
     @staticmethod
@@ -254,13 +254,6 @@ class dl:
         default=False,
         help="Exclude Dolby Atmos audio tracks when selecting audio.",
     )
-    @click.option(
-        "--select-titles",
-        is_flag=True,
-        default=False,
-        help="Interactively select downloads from a list. Only use with Series to select Episodes",
-    )
-
     @click.option(
         "-w",
         "--wanted",
@@ -731,7 +724,6 @@ class dl:
         range_: list[Video.Range],
         channels: float,
         no_atmos: bool,
-        select_titles: bool,
         wanted: list[str],
         latest_episode: bool,
         lang: list[str],
@@ -906,42 +898,6 @@ class dl:
         console.print(Padding(titles.tree(verbose=list_titles), (0, 5)))
         if list_titles:
             return
-        # modification to enable beaupy module to list titles for download for manual selection 
-        # use --select-titles after dl in unshackle command
-        
-        Config.transient = True
-        if select_titles and type(titles)==Series:
-            console.print(Padding(Rule(f"[rule.text]\nSelect Titles Option\n")))
-
-            
-            beaupy_titles = [
-                # thanks CodeName393 for the improvedformatting idea
-                f"{i+1}. {t.title} - S{t.season:02}E{t.number:02}"
-                + (f" - {t.name}" if t.name else "")
-                for i, t in enumerate(titles)
-            ]
-            
-            selected_idx = select_multiple(
-                beaupy_titles,
-                preprocessor=lambda val: f"[rgb(205,214,244)]{val}[/rgb(205,214,244)]",
-                minimal_count=1,
-                page_size=8,
-                pagination=True,
-                return_indices=True,
-                
-            )
-        
-            # Keep indices unique & ordered
-            selected_idx = sorted(set(selected_idx))
-            keep = set(selected_idx)
-
-            # In-place filter: delete everything not selected (walk backwards!)
-            # need to delete from original list to keep super class' meta data
-            for i in range(len(titles) - 1, -1, -1):
-                if i not in keep:
-                    del titles[i]
-            console.print(Padding(f"[rgb(205,214,244)]{len(titles)} {'titles' if len(titles) > 1 else 'title'} selected for download[/rgb(205,214,244)]", (0, 5))) 
-        #  end modification
 
         # Determine the latest episode if --latest-episode is set
         latest_episode_id = None

@@ -24,7 +24,7 @@ class RTE(Service):
     Service code for RTE Player streaming service (https://www.rte.ie/player/).
 
     \b
-    Version: 1.0.1
+    Version: 1.0.3
     Author: stabbedbybrick
     Authorization: None
     Robustness:
@@ -97,7 +97,7 @@ class RTE(Service):
         title_re = (
             r"https://www\.rte\.ie/player"
             r"/(?P<type>series|movie)"
-            r"/(?P<slug>[a-zA-Z0-9_-]+)"
+            r"/(?P<slug>[a-zA-Z0-9%_.-]+)"
             r"/(?P<id>[a-zA-Z0-9_\-=?]+)/?$"
         )
         try:

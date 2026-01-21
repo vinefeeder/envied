@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 import uuid
 from collections import defaultdict
 from collections.abc import Generator
@@ -32,9 +33,9 @@ class DSCP(Service):
     Credit to @sp4rk.y for the subtitle fix.
 
     \b
-    Version: 1.0.0
+    Version: 1.0.1
     Author: stabbedbybrick
-    Authorization: Cookies
+    Authorization: Cookies for subscription, none for freely available titles
     Robustness:
         Widevine:
             L1: 2160p, 1080p
@@ -45,11 +46,11 @@ class DSCP(Service):
 
     \b
     Tips:
-        - Input examples:
-            SHOW: https://play.discoveryplus.com/show/eb26e00e-9582-4790-a61c-48d785926f58
-            STANDALONE: https://play.discoveryplus.com/standalone/5012ae3f-d9bd-46ec-ad42-b8116b811441
-            SPORT: https://play.discoveryplus.com/sport/9cc449de-2a64-524d-bcb6-cabd4ac70340
-            EPISODE: https://play.discoveryplus.com/video/watch/8685efdd-a3c4-4892-b1d1-5f9f071cacf1/de67ea8e-a90f-4609-81af-4f09906f60b2
+        - Input can be either complete title URL or just the path:
+            SHOW: /show/eb26e00e-9582-4790-a61c-48d785926f58
+            STANDALONE: /standalone/5012ae3f-d9bd-46ec-ad42-b8116b811441
+            SPORT: /sport/9cc449de-2a64-524d-bcb6-cabd4ac70340
+            EPISODE: /video/watch/8685efdd-a3c4-4892-b1d1-5f9f071cacf1/de67ea8e-a90f-4609-81af-4f09906f60b2
 
     \b
     Notes:
@@ -93,30 +94,32 @@ class DSCP(Service):
                 self.drm_system = "widevine"
                 self.security_level = "L1"
 
+        self.base_url = self.config["endpoints"]["default_url"]
+
     def get_session(self) -> CurlSession:
         return CurlSession("okhttp4", status_forcelist=[429, 502, 503, 504])
 
     def authenticate(self, cookies: CookieJar | None = None, credential: Credential | None = None) -> None:
         super().authenticate(cookies, credential)
-        if not cookies:
-            raise EnvironmentError("Service requires Cookies for Authentication.")
+        tokens = {}
 
-        cache = self.cache.get(f"tokens_{self.profile}")
-        if cache:
-            self.log.info(" + Using cached Tokens...")
-            tokens = cache.data
-        else:
-            self.log.info(" + Setting up new profile...")
-
-            st_token = self.session.cookies.get_dict().get("st")
+        if cookies is not None:
+            st_token = next((c.value for c in cookies if c.name == "st"), None)
             if not st_token:
                 raise ValueError("- Unable to find token in cookies, try refreshing.")
 
-            profile = {"token": st_token, "device_id": str(uuid.uuid1())}
-            cache.set(profile)
-            tokens = cache.data
+            # Only use cache if cookies are present since it's not needed for free titles
+            cache = self.cache.get(f"tokens_{self.profile}")
+            if cache:
+                self.log.info(" + Using cached Tokens...")
+                tokens = cache.data
+            else:
+                self.log.info(" + Setting up new profile...")
+                profile = {"token": st_token, "device_id": str(uuid.uuid1())}
+                cache.set(profile)
+                tokens = cache.data
 
-        self.device_id = tokens["device_id"]
+        self.device_id = tokens.get("device_id") or str(uuid.uuid1())
         client_id = self.config["client_id"]
 
         self.session.headers.update({
@@ -126,17 +129,12 @@ class DSCP(Service):
             "x-device-info": f"dplus/20.8.1.2 (NVIDIA/SHIELD Android TV; android/9-mdarcy; {self.device_id}/{client_id})",
         })
 
-        self.base_url = self.config["endpoints"]["base_url"].format("any", "any")
         access = self._request("GET", "/token", params={"realm": "bolt", "deviceId": self.device_id})
         
         self.access_token = access["data"]["attributes"]["token"]
 
         config = self._request("POST", "/session-context/headwaiter/v1/bootstrap")
-        self.base_url = self.config["endpoints"]["base_url"].format(config["routing"]["tenant"], config["routing"]["homeMarket"])
-
-        user = self._request("GET", "/users/me")
-        if user["data"]["attributes"]["anonymous"]:
-            raise ValueError("Anonymous user - try refreshing cookies.")
+        self.base_url = self.config["endpoints"]["template"].format(config["routing"]["tenant"], config["routing"]["homeMarket"])
 
     def search(self) -> Generator[SearchResult, None, None]:
         params = {
@@ -152,11 +150,11 @@ class DSCP(Service):
 
         for result in results:
             yield SearchResult(
-                id_=f"https://play.discoveryplus.com/show/{result.get('alternateId')}",
+                id_=f"/show/{result.get('alternateId')}",
                 title=result.get("name"),
                 description=result.get("description"),
                 label="show",
-                url=f"https://play.discoveryplus.com/show/{result.get('alternateId')}",
+                url=f"/show/{result.get('alternateId')}",
             )
 
     def get_titles(self) -> Movies | Series:
@@ -309,7 +307,7 @@ class DSCP(Service):
             elif "credits" in chapter.get("type", "").lower():
                 chapters.append(Chapter(name="Credits", timestamp=chapter["start"]))
         
-        if not any(c.timestamp == 0 for c in chapters):
+        if not any(c.timestamp == "00:00:00.000" for c in chapters):
             chapters.append(Chapter(timestamp=0))
 
         return sorted(chapters, key=lambda x: x.timestamp)
@@ -574,8 +572,11 @@ class DSCP(Service):
         try:
             data = json.loads(response.content)
 
-            if data.get("errors"):
-                raise ConnectionError(data["errors"])
+            if errors := data.get("errors", []):
+                code = next((x.get("code", "") for x in errors), "")
+                if "missingpackage" in code.lower():
+                    self.log.error("\nError: Subscription is required for this title.")
+                    sys.exit(1)
 
             return data
 

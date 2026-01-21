@@ -64,10 +64,11 @@ class SPOT(Service):
                 'accept-language': 'en',
                 "app-platform": "WebPlayer",
                 "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36",
+                
             }
         )
         self.session.cookies.update(cookies)
-        home_page = self.session.get("https://open.spotify.com/").content
+        home_page = self.session.get("https://open.spotify.com/").text
         token = re.search(r'accessToken":"(.*?)"', home_page).group(1)
         self.is_premium = re.search(r'isPremium":(.*?),', home_page).group(1) == 'true'
         self.session.headers.update(

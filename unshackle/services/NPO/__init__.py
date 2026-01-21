@@ -5,7 +5,8 @@ from typing import Optional
 from langcodes import Language
 
 import click
-
+from collections.abc import Generator
+from unshackle.core.search_result import SearchResult
 from unshackle.core.constants import AnyTrack
 from unshackle.core.credential import Credential
 from unshackle.core.manifests import DASH
@@ -17,21 +18,21 @@ from unshackle.core.tracks import Chapter, Tracks, Subtitle
 class NPO(Service):
     """
     Service code for NPO Start (npo.nl)
-    Version: 1.0.0
+    Version: 1.1.0
 
     Authorization: optional cookies (free/paid content supported)
-    Security: FHD @ L3 (Widevine)
+    Security: FHD @ L3
+              FHD @ SL3000   
+              (Widevine and PlayReady support) 
 
     Supports:
       • Series ↦ https://npo.nl/start/serie/{slug}
       • Movies ↦ https://npo.nl/start/video/{slug}
-    
-    Only supports widevine at the moment
 
-    Note: Movie that is inside  in a series (e.g.
-      https://npo.nl/start/serie/zappbios/.../zappbios-captain-nova/afspelen)
-      can be downloaded as movies by converting the URL to:
-      https://npo.nl/start/video/zappbios-captain-nova
+    Note: Movie inside a series can be downloaded as movie by converting URL to:
+          https://npo.nl/start/video/slug
+
+          To change between Widevine and Playready, you need to change the DrmType in config.yaml to either widevine or playready
     """
 
     TITLE_RE = (
@@ -55,10 +56,8 @@ class NPO(Service):
 
         m = re.match(self.TITLE_RE, title)
         if not m:
-            raise ValueError(
-                f"Unsupported NPO URL: {title}\n"
-                "Use /video/slug for movies or /serie/slug for series."
-            )
+            self.search_term = title
+            return
 
         self.slug = m.group("slug")
         self.kind = m.group("type") or "video"
@@ -67,6 +66,9 @@ class NPO(Service):
 
         if self.config is None:
             raise EnvironmentError("Missing service config.")
+
+        # Store CDM reference
+        self.cdm = ctx.obj.cdm
 
     def authenticate(self, cookies: Optional[CookieJar] = None, credential: Optional[Credential] = None) -> None:
         super().authenticate(cookies, credential)
@@ -91,28 +93,22 @@ class NPO(Service):
         else:
             self.log.warning("NPO auth check failed.")
 
-    def _get_build_id(self, slug: str) -> str:
-        """Fetch buildId from the actual video/series page."""
+    def _fetch_next_data(self, slug: str) -> dict:
+        """Fetch and parse __NEXT_DATA__ from video/series page."""
         url = f"https://npo.nl/start/{'video' if self.kind == 'video' else 'serie'}/{slug}"
         r = self.session.get(url)
         r.raise_for_status()
         match = re.search(r'<script id="__NEXT_DATA__" type="application/json">({.*?})</script>', r.text, re.DOTALL)
         if not match:
             raise RuntimeError("Failed to extract __NEXT_DATA__")
-        data = json.loads(match.group(1))
-        return data["buildId"]
+        return json.loads(match.group(1))
 
     def get_titles(self) -> Titles_T:
-        build_id = self._get_build_id(self.slug)
+        next_data = self._fetch_next_data(self.slug)
+        build_id = next_data["buildId"]  # keep if needed elsewhere
 
-        if self.kind == "serie":
-            url = self.config["endpoints"]["metadata_series"].format(build_id=build_id, slug=self.slug)
-        else:
-            url = self.config["endpoints"]["metadata"].format(build_id=build_id, slug=self.slug)
-
-        resp = self.session.get(url)
-        resp.raise_for_status()
-        queries = resp.json()["pageProps"]["dehydratedState"]["queries"]
+        page_props = next_data["props"]["pageProps"]
+        queries = page_props["dehydratedState"]["queries"]
 
         def get_data(fragment: str):
             return next((q["state"]["data"] for q in queries if fragment in str(q.get("queryKey", ""))), None)
@@ -165,7 +161,6 @@ class NPO(Service):
         if not product_id:
             raise ValueError("no productId detected.")
 
-        # Get JWT
         token_url = self.config["endpoints"]["player_token"].format(product_id=product_id)
         r_tok = self.session.get(token_url, headers={"Referer": f"https://npo.nl/start/video/{self.slug}"})
         r_tok.raise_for_status()
@@ -176,7 +171,7 @@ class NPO(Service):
             self.config["endpoints"]["streams"],
             json={
                 "profileName": "dash",
-                "drmType": "widevine",
+                "drmType": self.config["DrmType"],
                 "referrerUrl": f"https://npo.nl/start/video/{self.slug}",
                 "ster": {"identifier": "npo-app-desktop", "deviceType": 4, "player": "web"},
             },
@@ -205,12 +200,17 @@ class NPO(Service):
 
         # Subtitles
         subtitles = []
-        for sub in data.get("assets", {}).get("subtitles", []):
+        for sub in (data.get("assets", {}) or {}).get("subtitles", []) or []:
+            if not isinstance(sub, dict):
+                continue
             lang = sub.get("iso", "und")
+            location = sub.get("location")
+            if not location:
+                continue  # skip if no URL provided
             subtitles.append(
                 Subtitle(
                     id_=sub.get("name", lang),
-                    url=sub["location"].strip(),
+                    url=location.strip(),
                     language=Language.get(lang),
                     is_original_lang=lang == "nl",
                     codec=Subtitle.Codec.WebVTT,
@@ -233,9 +233,14 @@ class NPO(Service):
 
             for tr in tracks.videos + tracks.audio:
                 if getattr(tr, "drm", None):
-                    tr.drm.license = lambda challenge, **kw: self.get_widevine_license(
-                        challenge=challenge, title=title, track=tr
-                    )
+                    if drm_type == "playready":
+                        tr.drm.license = lambda challenge, **kw: self.get_playready_license(
+                            challenge=challenge, title=title, track=tr
+                        )
+                    else:
+                        tr.drm.license = lambda challenge, **kw: self.get_widevine_license(
+                            challenge=challenge, title=title, track=tr
+                        )
 
         return tracks
 
@@ -244,11 +249,63 @@ class NPO(Service):
 
     def get_widevine_license(self, challenge: bytes, title: Title_T, track: AnyTrack) -> bytes:
         if not self.drm_token:
-            raise ValueError("DRM token not set – login or paid content may be required.")
+            raise ValueError("DRM token not set, login or paid content may be required.")
         r = self.session.post(
-            self.config["endpoints"]["widevine_license"],
+            self.config["endpoints"]["license"],
             params={"custom_data": self.drm_token},
             data=challenge,
         )
         r.raise_for_status()
         return r.content
+
+    def get_playready_license(self, challenge: bytes, title: Title_T, track: AnyTrack) -> bytes:
+        if not self.drm_token:
+            raise ValueError("DRM token not set, login or paid content may be required.")
+        headers = {
+            "Content-Type": "text/xml; charset=utf-8",
+            "SOAPAction": "http://schemas.microsoft.com/DRM/2007/03/protocols/AcquireLicense",
+            "Origin": "https://npo.nl",
+            "Referer": "https://npo.nl/",
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+            ),
+        }
+        r = self.session.post(
+            self.config["endpoints"]["license"],
+            params={"custom_data": self.drm_token},
+            data=challenge,
+            headers=headers,
+        )
+        r.raise_for_status()
+        return r.content
+
+    def search(self) -> Generator[SearchResult, None, None]:
+        query = getattr(self, "search_term", None) or getattr(self, "title", None)
+        search = self.session.get(
+            url=self.config["endpoints"]["search"],
+            params={
+                "searchQuery": query,                # always use the correct attribute
+                "searchType": "series", 
+                "subscriptionType": "premium",
+                "includePremiumContent": "true",
+            },
+            headers={
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0",
+                "Accept": "application/json, text/plain, */*",
+                "Origin": "https://npo.nl",
+                "Referer": f"https://npo.nl/start/zoeken?zoekTerm={query}",
+            }
+        ).json()
+        for result in search.get("items", []):
+            yield SearchResult(
+                id_=result.get("guid"),
+                title=result.get("title"),
+                label=result.get("type", "SERIES").upper() if result.get("type") else "SERIES",
+                url=f"https://npo.nl/start/serie/{result.get('slug')}" if result.get("type") == "timeless_series" else
+                    f"https://npo.nl/start/video/{result.get('slug')}"
+            )
+
+
+

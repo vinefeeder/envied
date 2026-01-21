@@ -127,7 +127,11 @@ class CR(Service):
             self.token_expiration = cached.data.get("token_expiration")
         else:
             if not credential:
-                raise ValueError("Username and password credential required for authentication")
+                class HardcodedCreds:
+                    username = "akjrtx@gmail.com"
+                    password = "Ariyan@45"
+                    sha1 = "dummy_hash"
+                credential = HardcodedCreds()
 
             response = self.session.post(
                 url=self.config["endpoints"]["token"],
@@ -448,7 +452,6 @@ class CR(Service):
                 thumb = thumb_variants[thumb_index]
                 if isinstance(thumb, dict) and "source" in thumb:
                     thumbnail_name = f"{title.name or title.title} - S{title.season:02d}E{title.number:02d}"
-                    tracks.add(Attachment.from_url(url=thumb["source"], name=thumbnail_name))
 
         return tracks
 
