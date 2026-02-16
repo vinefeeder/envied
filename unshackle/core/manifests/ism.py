@@ -21,7 +21,7 @@ from unshackle.core.constants import DOWNLOAD_CANCELLED, DOWNLOAD_LICENCE_ONLY, 
 from unshackle.core.drm import DRM_T, PlayReady, Widevine
 from unshackle.core.events import events
 from unshackle.core.tracks import Audio, Subtitle, Track, Tracks, Video
-from unshackle.core.utilities import try_ensure_utf8
+from unshackle.core.utilities import get_debug_logger, try_ensure_utf8
 from unshackle.core.utils.xml import load_xml
 
 
@@ -283,6 +283,24 @@ class ISM:
                 }
             )
 
+        debug_logger = get_debug_logger()
+        if debug_logger:
+            debug_logger.log(
+                level="DEBUG",
+                operation="manifest_ism_download_start",
+                message="Starting ISM manifest download",
+                context={
+                    "track_id": getattr(track, "id", None),
+                    "track_type": track.__class__.__name__,
+                    "total_segments": len(segments),
+                    "downloader": downloader.__name__,
+                    "has_drm": bool(session_drm),
+                    "drm_type": session_drm.__class__.__name__ if session_drm else None,
+                    "skip_merge": skip_merge,
+                    "save_path": str(save_path),
+                },
+            )
+
         for status_update in downloader(**downloader_args):
             file_downloaded = status_update.get("file_downloaded")
             if file_downloaded:
@@ -296,7 +314,62 @@ class ISM:
         for control_file in save_dir.glob("*.aria2__temp"):
             control_file.unlink()
 
+        # Verify output directory exists and contains files
+        if not save_dir.exists():
+            error_msg = f"Output directory does not exist: {save_dir}"
+            if debug_logger:
+                debug_logger.log(
+                    level="ERROR",
+                    operation="manifest_ism_download_output_missing",
+                    message=error_msg,
+                    context={
+                        "track_id": getattr(track, "id", None),
+                        "track_type": track.__class__.__name__,
+                        "save_dir": str(save_dir),
+                        "save_path": str(save_path),
+                        "downloader": downloader.__name__,
+                        "skip_merge": skip_merge,
+                    },
+                )
+            raise FileNotFoundError(error_msg)
+
         segments_to_merge = [x for x in sorted(save_dir.iterdir()) if x.is_file()]
+
+        if debug_logger:
+            debug_logger.log(
+                level="DEBUG",
+                operation="manifest_ism_download_complete",
+                message="ISM download complete, preparing to merge",
+                context={
+                    "track_id": getattr(track, "id", None),
+                    "track_type": track.__class__.__name__,
+                    "save_dir": str(save_dir),
+                    "save_dir_exists": save_dir.exists(),
+                    "segments_found": len(segments_to_merge),
+                    "segment_files": [f.name for f in segments_to_merge[:10]],  # Limit to first 10
+                    "downloader": downloader.__name__,
+                    "skip_merge": skip_merge,
+                },
+            )
+
+        if not segments_to_merge:
+            error_msg = f"No segment files found in output directory: {save_dir}"
+            if debug_logger:
+                all_contents = list(save_dir.iterdir()) if save_dir.exists() else []
+                debug_logger.log(
+                    level="ERROR",
+                    operation="manifest_ism_download_no_segments",
+                    message=error_msg,
+                    context={
+                        "track_id": getattr(track, "id", None),
+                        "track_type": track.__class__.__name__,
+                        "save_dir": str(save_dir),
+                        "directory_contents": [str(p) for p in all_contents],
+                        "downloader": downloader.__name__,
+                        "skip_merge": skip_merge,
+                    },
+                )
+            raise FileNotFoundError(error_msg)
 
         if skip_merge:
             shutil.move(segments_to_merge[0], save_path)

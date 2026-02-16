@@ -10,16 +10,16 @@ certificate: |
 
 ## config ( {configVersion}/{clientId}/{deviceFamily}/{sdkVersion}/{applicationRuntime}/{deviceProfile}/{environment} ) ##
 # Browser (windows, chrome) : /browser/v34.2/windows/chrome/prod.json
-# Android Phone : /android/v12.0.0/google/handset/prod.json
-# Android TV : /android/v12.0.0/google/tv/prod.json
-# Amazon Fire TV : /android/v12.0.0/amazon/tv/prod.json
+# Android Phone : /android/v15.0.0/google/handset/prod.json
+# Android TV : /android/v15.0.0/google/tv/prod.json
+# Amazon Fire TV : /android/v15.0.0/amazon/tv/prod.json
 
 endpoints:
-  config: "https://client-sdk-configs.bamgrid.com/bam-sdk/v7.0/disney-svod-3d9324fc/android/v13.0.0/google/tv/prod.json"
+  config: "https://client-sdk-configs.bamgrid.com/bam-sdk/v7.0/disney-svod-3d9324fc/android/v15.0.0/google/tv/prod.json"
 
-## user_agent ##
-# android-phone : BAMSDK/v13.3.0 (disney-svod-3d9324fc 4.18.1+rc6-2025.11.05.0; v7.0/v13.0.0; android; phone)
-# android-tv : BAMSDK/v13.3.0 (disney-svod-3d9324fc 4.18.1+rc6-2025.11.05.0; v7.0/v13.0.0; android; tv)
+## user_agent (okhttp/5.0.0-alpha.14) ##
+# android-phone : BAMSDK/v15.0.1 (disney-svod-3d9324fc 4.21.1+rc3-2026.01.06.0; v7.0/v15.0.0; android; phone)
+# android-tv : BAMSDK/v15.0.1 (disney-svod-3d9324fc 4.21.1+rc3-2026.01.06.0; v7.0/v15.0.0; android; tv)
 
 ## api_key ##
 # browser : ZGlzbmV5JmJyb3dzZXImMS4wLjA.Cu56AgSfBTDag5NiRA81oLHkDZfu5L3CKadnefEAY84
@@ -30,11 +30,11 @@ endpoints:
 # android : 624b805dafc5c73635b1a216
 
 bamsdk:
-  sdk_version: "13.3.0"
-  application_version: "4.18.1+rc6-2025.11.05.0"
-  explore_version: "v1.11"
+  sdk_version: "15.0.1"
+  application_version: "4.21.1+rc3-2026.01.06.0"
+  explore_version: "v1.13"
   client: "disney-svod-3d9324fc"
-  user_agent: "BAMSDK/v13.3.0 (disney-svod-3d9324fc 4.18.1+rc6-2025.11.05.0; v7.0/v13.0.0; android; tv)"
+  user_agent: "BAMSDK/v15.0.1 (disney-svod-3d9324fc 4.21.1+rc3-2026.01.06.0; v7.0/v15.0.0; android; tv)"
   api_key: "ZGlzbmV5JmFuZHJvaWQmMS4wLjA.bkeb0m230uUhv8qrAXuNu39tbE_mD5EEhM_NAcohjyA"
   yp_service_id: "624b805dafc5c73635b1a216"
 
@@ -46,7 +46,9 @@ device:
   applicationRuntime: "android"
   operatingSystem: "Android"
   operatingSystemVersion: "16"
-  deviceLanguage: "ko" # en
+  deviceLanguage: "ko" # Device language data independent of account language data
 
-profile:
-  index: 0
+# Specifies the index of the profile to use. (0 = first profile, 1 = second profile, etc.)
+# Automatically select a profile when commenting.
+# profile:
+#   index: 0

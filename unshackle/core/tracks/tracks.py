@@ -95,7 +95,7 @@ class Tracks:
 
         return rep
 
-    def tree(self, add_progress: bool = False) -> tuple[Tree, list[partial]]:
+    def tree(self, add_progress: bool = False) -> tuple[Tree, list[Callable[..., None]]]:
         all_tracks = [*list(self), *self.chapters, *self.attachments]
 
         progress_callables = []
@@ -121,7 +121,29 @@ class Tracks:
                         speed_estimate_period=10,
                     )
                     task = progress.add_task("", downloaded="-")
-                    progress_callables.append(partial(progress.update, task_id=task))
+                    state = {"total": 100.0}
+
+                    def update_track_progress(
+                        task_id: int = task,
+                        _state: dict[str, float] = state,
+                        _progress: Progress = progress,
+                        **kwargs,
+                    ) -> None:
+                        """
+                        Ensure terminal status states render as a fully completed bar.
+
+                        Some downloaders can report completed slightly below total
+                        before emitting the final "Downloaded" state.
+                        """
+                        if "total" in kwargs and kwargs["total"] is not None:
+                            _state["total"] = kwargs["total"]
+
+                        downloaded_state = kwargs.get("downloaded")
+                        if downloaded_state in {"Downloaded", "Decrypted", "[yellow]SKIPPED"}:
+                            kwargs["completed"] = _state["total"]
+                        _progress.update(task_id=task_id, **kwargs)
+
+                    progress_callables.append(update_track_progress)
                     track_table = Table.grid()
                     track_table.add_row(str(track)[6:], style="text2")
                     track_table.add_row(progress)
@@ -199,13 +221,15 @@ class Tracks:
             self.videos.sort(key=lambda x: not is_close_match(language, [x.language]))
 
     def sort_audio(self, by_language: Optional[Sequence[Union[str, Language]]] = None) -> None:
-        """Sort audio tracks by bitrate, descriptive, and optionally language."""
+        """Sort audio tracks by bitrate, Atmos, descriptive, and optionally language."""
         if not self.audio:
             return
-        # descriptive
-        self.audio.sort(key=lambda x: x.descriptive)
-        # bitrate (within each descriptive group)
+        # bitrate (highest first)
         self.audio.sort(key=lambda x: float(x.bitrate or 0.0), reverse=True)
+        # Atmos tracks first (prioritize over higher bitrate non-Atmos)
+        self.audio.sort(key=lambda x: not x.atmos)
+        # descriptive tracks last
+        self.audio.sort(key=lambda x: x.descriptive)
         # language
         for language in reversed(by_language or []):
             if str(language) in ("all", "best"):
@@ -314,6 +338,7 @@ class Tracks:
         progress: Optional[partial] = None,
         audio_expected: bool = True,
         title_language: Optional[Language] = None,
+        skip_subtitles: bool = False,
     ) -> tuple[Path, int, list[str]]:
         """
         Multiplex all the Tracks into a Matroska Container file.
@@ -328,6 +353,7 @@ class Tracks:
                 if embedded audio metadata should be added.
             title_language: The title's intended language. Used to select the best video track
                 for audio metadata when multiple video tracks exist.
+            skip_subtitles: Skip muxing subtitle tracks into the container.
         """
         if self.videos and not self.audio and audio_expected:
             video_track = None
@@ -439,34 +465,35 @@ class Tracks:
                 ]
             )
 
-        for st in self.subtitles:
-            if not st.path or not st.path.exists():
-                raise ValueError("Text Track must be downloaded before muxing...")
-            events.emit(events.Types.TRACK_MULTIPLEX, track=st)
-            default = bool(self.audio and is_close_match(st.language, [self.audio[0].language]) and st.forced)
-            cl.extend(
-                [
-                    "--track-name",
-                    f"0:{st.get_track_name() or ''}",
-                    "--language",
-                    f"0:{st.language}",
-                    "--sub-charset",
-                    "0:UTF-8",
-                    "--forced-track",
-                    f"0:{st.forced}",
-                    "--default-track",
-                    f"0:{default}",
-                    "--hearing-impaired-flag",
-                    f"0:{st.sdh}",
-                    "--original-flag",
-                    f"0:{st.is_original_lang}",
-                    "--compression",
-                    "0:none",  # disable extra compression (probably zlib)
-                    "(",
-                    str(st.path),
-                    ")",
-                ]
-            )
+        if not skip_subtitles:
+            for st in self.subtitles:
+                if not st.path or not st.path.exists():
+                    raise ValueError("Text Track must be downloaded before muxing...")
+                events.emit(events.Types.TRACK_MULTIPLEX, track=st)
+                default = bool(self.audio and is_close_match(st.language, [self.audio[0].language]) and st.forced)
+                cl.extend(
+                    [
+                        "--track-name",
+                        f"0:{st.get_track_name() or ''}",
+                        "--language",
+                        f"0:{st.language}",
+                        "--sub-charset",
+                        "0:UTF-8",
+                        "--forced-track",
+                        f"0:{st.forced}",
+                        "--default-track",
+                        f"0:{default}",
+                        "--hearing-impaired-flag",
+                        f"0:{st.sdh}",
+                        "--original-flag",
+                        f"0:{st.is_original_lang}",
+                        "--compression",
+                        "0:none",  # disable extra compression (probably zlib)
+                        "(",
+                        str(st.path),
+                        ")",
+                    ]
+                )
 
         if self.chapters:
             chapters_path = config.directories.temp / config.filenames.chapters.format(

@@ -1,28 +1,30 @@
 from __future__ import annotations
 
+import base64
+import click
 import re
+import secrets
 import sys
 import uuid
-from datetime import datetime
-from collections.abc import Generator
-from http.cookiejar import CookieJar
-from typing import Any, Optional, Union, List
-from langcodes import Language
 
-import click
 from click import Context
+from collections.abc import Generator
+from datetime import datetime
+from http.cookiejar import CookieJar
+from langcodes import Language
 from pyplayready.cdm import Cdm as PlayReadyCdm
 from requests import Request
+from typing import Any, Optional, Union, List
 
 from unshackle.core.constants import AnyTrack
 from unshackle.core.credential import Credential
+from unshackle.core.manifests import HLS
 from unshackle.core.search_result import SearchResult
 from unshackle.core.service import Service
-from unshackle.core.manifests import HLS
 from unshackle.core.titles import Title_T, Titles_T, Episode, Movie, Movies, Series
 from unshackle.core.tracks import Chapter, Chapters, Tracks, Attachment, Video, Audio, Subtitle
-from unshackle.core.utils.collections import as_list
 from unshackle.core.utilities import get_ip_info
+from unshackle.core.utils.collections import as_list
 
 from . import queries
 
@@ -46,11 +48,12 @@ class DSNP(Service):
     @click.argument("title", type=str)
     @click.option("--imax", is_flag=True, default=False, help="Prefer IMAX Enhanced version if available.")
     @click.option("--remastered-ar", is_flag=True, default=False, help="Prefer Remastered Aspect Ratio if available.")
+    @click.option("-ext", "--extras", is_flag=True, default=False, help="Select a extras video if available.")
     @click.pass_context
     def cli(ctx: Context, **kwargs: Any) -> DSNP:
         return DSNP(ctx, **kwargs)
 
-    def __init__(self, ctx: Context, title: str, imax: bool, remastered_ar: bool):
+    def __init__(self, ctx: Context, title: str, imax: bool, remastered_ar: bool, extras: bool):
         self.title = title
         super().__init__(ctx)
         
@@ -61,8 +64,9 @@ class DSNP(Service):
                 self.title_id = match.group("id")
                 break
 
-        self.prefer_imax = imax or False
-        self.prefer_remastered_ar = remastered_ar or False
+        self.prefer_imax = imax
+        self.prefer_remastered_ar = remastered_ar
+        self.extras = extras
 
         self.vcodec = ctx.parent.params.get("vcodec") or Video.Codec.AVC
         self.acodec : Audio.Codec = ctx.parent.params.get("acodec")
@@ -74,8 +78,8 @@ class DSNP(Service):
         self.chapters_only = ctx.parent.params.get("chapters_only")
 
         self.cdm = ctx.obj.cdm
-        self.playready = isinstance(self.cdm, PlayReadyCdm)
-        self.is_l3 = (self.cdm.security_level < 3000) if self.playready else (self.cdm.security_level == 3)
+        self.playready = isinstance(self.cdm, PlayReadyCdm) if self.cdm else False
+        self.is_l3 = (self.cdm.security_level < 3000) if self.playready else (self.cdm.security_level == 3) if self.cdm else False
 
         self.region = None
         self.prod_config = {}
@@ -91,13 +95,13 @@ class DSNP(Service):
             self.quality = [720]
             self.log.warning(" + Switched video to HD. This CDM only support HD.")
         else:
-            if self.quality > [1080] and self.range == [Video.Range.SDR]:
+            if self.quality > [1080] and self.range[0] == [Video.Range.SDR]:
                 self.range = [Video.Range.HDR10]
                 self.log.info(" + Switched range to HDR10. 4K resolution requires HDR.")
 
             if (self.range != [Video.Range.SDR] or self.quality > [1080]) and self.vcodec != Video.Codec.HEVC:
                 self.vcodec = Video.Codec.HEVC
-                self.log.info(f" + Switched video codec to H265 to be able to get {self.range} dynamic range.")
+                self.log.info(f" + Switched video codec to H265 to be able to get {self.range[0]} dynamic range.")
 
             if self.acodec == Audio.Codec.DTS and not self.prefer_imax:
                 self.prefer_imax = True
@@ -164,7 +168,7 @@ class DSNP(Service):
                 self._perform_switch_profile(target_profile, self.session.headers)
 
                 self.log.info(" + Refreshing session data after profile switch...")
-                full_account_info = self._get_account_info_raw()
+                full_account_info = self._get_account_info()
                 self.active_session = full_account_info["activeSession"]
                 self.active_session['account'] = full_account_info['account']
                 self.log.info("Session data updated successfully.")
@@ -193,12 +197,14 @@ class DSNP(Service):
         current_imax_setting = full_profile_object["attributes"]["playbackSettings"]["preferImaxEnhancedVersion"]
         self.log.info(f" + IMAX Enhanced: {current_imax_setting}")
         if current_imax_setting is not self.prefer_imax:
-            self._set_imax_preference(self.prefer_imax)
+            update_tokens = self._set_imax_preference(self.prefer_imax)
+            self._apply_new_tokens(update_tokens["token"])
 
         current_133_setting = full_profile_object["attributes"]["playbackSettings"]["prefer133"] # Original Aspect Ratio
         self.log.info(f" + Remastered Aspect Ratio: {not current_133_setting}")
         if not current_133_setting is not self.prefer_remastered_ar:
-            self._set_remastered_ar_preference(self.prefer_remastered_ar)
+            update_tokens = self._set_remastered_ar_preference(self.prefer_remastered_ar)
+            self._apply_new_tokens(update_tokens["token"])
 
     def _login(self) -> None:
         cache = self.cache.get(f"tokens_{self.region}_{self.credentials.sha1}")
@@ -208,7 +214,7 @@ class DSNP(Service):
                 self.log.info(" + Using cached tokens...")
                 self.account_tokens = cache.data
 
-                bearer = self.account_tokens["token"]["accessToken"]
+                bearer = self.account_tokens["accessToken"]
                 if not bearer:
                     raise ValueError("accessToken not found in cache")
                 self.session.headers.update({'Authorization': f'Bearer {bearer}'})
@@ -231,19 +237,45 @@ class DSNP(Service):
             self._perform_full_login()
 
         self.log.info(" + Fetching session data...")
-        full_account_info = self._get_account_info_raw()
+        full_account_info = self._get_account_info()
         self.active_session = full_account_info["activeSession"]
         self.active_session['account'] = full_account_info['account']
         self.log.info("Session data setup successfully.")
 
     def _perform_full_login(self) -> None:
-        device_token = self._register_device()
+        android_id = secrets.token_bytes(8).hex()
+        drm_id = f"{base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('utf-8')}\n"
+        device_token = self._register_device(android_id, drm_id)
 
         email_status = self._check_email(self.credentials.username, device_token)
+
         if email_status.lower() != "login":
-            if email_status.lower() == "OTP":
-                self.log.error(" - Account requires 2FA passcode.", exc_info=False)
-                sys.exit(1)
+            if email_status.lower() == "otp":
+                self.log.warning(" - Account requires OTP code login.")
+                self._request_otp(self.credentials.username, device_token)
+
+                otp_code = None
+                try:
+                    otp_code = input("Enter a OTP code (Check email): ")
+                    if not otp_code:
+                        self.log.error("   - OTP code is required, but no value was entered.", exc_info=False)
+                        sys.exit(1)
+                    if not otp_code.isdigit():
+                        self.log.error("   - Invalid OTP code. Please enter only numbers.", exc_info=False)
+                        sys.exit(1)
+                    if len(otp_code) < 6:
+                        self.log.error("   - OTP code is too short. Please enter at least 6 digits.", exc_info=False)
+                        sys.exit(1)
+                    if len(otp_code) > 6:
+                        self.log.warning("   - OTP code is longer than 6 digits. Using the first 6 digits.")
+                        otp_code = otp_code[:6]
+                except KeyboardInterrupt:
+                    self.log.error("\n - OTP code input cancelled by user.", exc_info=False)
+                    sys.exit(1)
+                
+                auth_action = self._auth_action_with_otp(self.credentials.username, otp_code, device_token)
+                login_tokens = self._login_with_auth_action(auth_action, device_token)
+
             elif email_status.lower() == "register":
                 self.log.error(" - Account is not registered. Please register first.", exc_info=False)
                 sys.exit(1)
@@ -251,10 +283,11 @@ class DSNP(Service):
                 self.log.error(f" - Email status is '{email_status}'. Account status verification required.", exc_info=False)
                 sys.exit(1)
 
-        login_tokens = self._login_with_password(self.credentials.username, self.credentials.password, device_token)
+        else:
+            login_tokens = self._login_with_password(self.credentials.username, self.credentials.password, device_token)
 
-        temp_auth_header = {"Authorization": f'Bearer {login_tokens["accessToken"]}'}
-        account_info = self._get_account_info_raw(temp_auth_header)
+        temp_auth_header = {"Authorization": f'Bearer {login_tokens["token"]["accessToken"]}'}
+        account_info = self._get_account_info(temp_auth_header)
         profiles = account_info["account"]["profiles"]
 
         selected_profile = None
@@ -308,10 +341,8 @@ class DSNP(Service):
                 self.log.error("\n - PIN input cancelled by user.", exc_info=False)
                 sys.exit(1)
 
-
         switch_profile_data = self._switch_profile(target_profile['id'], auth_headers, profile_pin)
-        final_token_data = self._refresh_token(switch_profile_data["token"]["refreshToken"])
-        self._apply_new_tokens(final_token_data)
+        self._apply_new_tokens(switch_profile_data["token"])
         
     def _refresh(self) -> str:
         cache = self.cache.get(f"tokens_{self.region}_{self.credentials.sha1}")
@@ -321,23 +352,21 @@ class DSNP(Service):
 
         self.log.warning(" + Token expired. Refreshing...")
         try:
-            refreshed_data = self._refresh_token(self.account_tokens["token"]["refreshToken"])
-            bearer = self._apply_new_tokens(refreshed_data)
-            return bearer
+            refreshed_data = self._refresh_token(self.account_tokens["refreshToken"])
+            self._apply_new_tokens(refreshed_data["token"])
         except Exception as _:
-            self.log.error("Refresh Token Expired", exc_info=False)
-            sys.exit(1)
+            raise Exception("Refresh Token Expired")
         
     def _apply_new_tokens(self, token_data: dict) -> str:
         self.account_tokens = token_data
 
-        bearer = self.account_tokens["token"]["accessToken"]
+        bearer = self.account_tokens["accessToken"]
         if not bearer:
             self.log.error("Invalid token data: accessToken not found.", exc_info=False)
             sys.exit(1)
         self.session.headers.update({'Authorization': f'Bearer {bearer}'})
 
-        expires_in = self.account_tokens["token"]["expiresIn"] or 3600
+        expires_in = self.account_tokens["expiresIn"] or 3600
         cache = self.cache.get(f"tokens_{self.region}_{self.credentials.sha1}")
         cache.set(self.account_tokens, expires_in - 60)
         self.log.debug(f"  + New Token is valid until: {datetime.fromtimestamp(cache.expiration.timestamp()).strftime('%Y-%m-%d %H:%M:%S')}")
@@ -363,64 +392,71 @@ class DSNP(Service):
             )
 
     def get_titles(self) -> Titles_T:
-        try:
-            content_info = self._get_deeplink(self.title_id)
-            content_type = content_info["data"]["deeplink"]["actions"][0]["contentType"]
-        except Exception as e:
+        if not self.extras:
             try:
-                actions_info = self._get_deeplink_last(self.title_id)
-                if actions_info["data"]["deeplink"]["actions"][0]["type"] == "browse":
-                    content_type = "other"
-                    self.log.warning(" - The content is not standard. however, it tries to look up the data.")
+                content_info = self._get_deeplink(self.title_id)
+                content_type = content_info["data"]["deeplink"]["actions"][0]["contentType"]
             except Exception as e:
-                self.log.error(f" - Failed to determine content type via deeplink ({e}).", exc_info=False)
-                sys.exit(1)
+                try:
+                    actions_info = self._get_deeplink_last(self.title_id)
+                    if actions_info["data"]["deeplink"]["actions"][0]["type"] == "browse":
+                        info_block = base64.b64decode(actions_info["data"]["deeplink"]["actions"][0]["infoBlock"])
+                        if b"movie" in info_block:
+                            content_type = "movie"
+                        elif b"series" in info_block:
+                            content_type = "series"
+                        else:
+                            content_type = "other"
+                            self.log.warning(" - The content is not standard. however, it tries to look up the data.")
+                except Exception as e:
+                    self.log.error(f" - Failed to determine content type via deeplink ({e}).", exc_info=False)
+                    sys.exit(1)
+        else:
+            content_type = "extras"
         self.log.debug(f" + Content Type: {content_type.upper()}")
 
         page = self._get_page(self.title_id)
 
-        orig_lang = "en"
-        if not content_type == "other":
-            playback_action = next(x for x in page["actions"] if x["type"] == "playback")
-            avail_id = playback_action["availId"]
-            self.log.debug(f" + Avail ID: {avail_id}")
-            lang_data = self._get_original_lang(avail_id)
-            orig_lang = lang_data["data"]["playerExperience"]["originalLanguage"]
+        year = None
+        if year_data := page["visuals"]["metastringParts"].get("releaseYearRange"):
+            year = year_data.get("startYear")
+
+        if content_type != "extras":
+            playback_action = next(
+                (x for x in page["actions"] if x["type"] == "playback"),
+                None
+            )
+            if not playback_action:
+                self.log.error(f" - No content is available. (Playback action not found)", exc_info=False)
+                sys.exit(1)
+            lang_data = self._get_original_lang(playback_action["availId"])
+            player_exp = lang_data["data"]["playerExperience"]
+            orig_lang = player_exp.get("originalLanguage") or player_exp.get("targetLanguage") or "en"
             self.log.debug(f' + Original Language: {orig_lang}')
         
-        if content_type == "movie":
-            return Movies(
-                [
-                    Movie(
-                        id_=page["id"],
-                        service=self.__class__,
-                        name=page["visuals"]["title"],
-                        year=page["visuals"]["metastringParts"]["releaseYearRange"]["startYear"],
-                        language=Language.get(orig_lang),
-                        data=page
-                    )
-                ]
-            )
+        if content_type in ("movie", "other"):
+            return Movies([
+                Movie(
+                    id_=page["id"],
+                    service=self.__class__,
+                    name=page["visuals"]["title"],
+                    year=year,
+                    language=Language.get(orig_lang),
+                    data=page
+                )
+            ])
 
         elif content_type == "series":
-            return Series(self._get_series(page, orig_lang))
+            return Series(self._get_series(page, year, orig_lang))
+        
+        elif content_type == "extras":
+            return Series(self._get_extras(page, year))
 
-        elif content_type == "other":
-            return Movies(
-                [
-                    Movie(
-                        id_=page["id"],
-                        service=self.__class__,
-                        name=page["visuals"]["title"],
-                        data=page
-                    )
-                ]
-            )
         else:
             self.log.error(f" - Unsupported content type: {content_type}", exc_info=False)
             sys.exit(1)
 
-    def _get_series(self, page: dict, orig_lang: str) -> Series:
+    def _get_series(self, page: dict, year: int, orig_lang: str) -> Series:
         container = next(x for x in page["containers"] if x["type"] == "episodes")
         season_ids = [s["id"] for s in container["seasons"]]
 
@@ -440,13 +476,62 @@ class DSNP(Service):
                         season=int(ep["visuals"]["seasonNumber"]),
                         number=int(ep["visuals"]["episodeNumber"]),
                         name=ep["visuals"]["episodeTitle"],
-                        year=page["visuals"]["metastringParts"]["releaseYearRange"]["startYear"],
+                        year=year,
                         language=Language.get(orig_lang),
                         data=ep
                     )
                 )
 
         return episodes
+    
+    def _get_extras(self, page: dict, year: int) -> Series:
+        extras_containers = [
+            x for x in page["containers"]
+            if x["type"] == "set" and x["style"]["name"] == "standard_compact_list"
+        ]
+
+        if not extras_containers:
+            self.log.error(" - No extras found.", exc_info=False)
+            sys.exit(1)
+
+        extras_episodes : List[Episode] = []
+        ep_count = 1
+
+        first_item = extras_containers[0]["items"][0]
+        first_action = next((x for x in first_item["actions"] if x["type"] in ("playback", "trailer")), None)
+        if first_action:
+            lang_data = self._get_original_lang(first_action["availId"])
+            player_exp = lang_data["data"]["playerExperience"]
+            orig_lang = player_exp.get("originalLanguage") or player_exp.get("targetLanguage") or "en"
+            self.log.debug(f' + Original Language: {orig_lang}')
+
+        for container in extras_containers:
+            items = container["items"]
+            for item in items:
+                if item["type"] == "view":
+                    action = next((x for x in item["actions"] if x["type"] in ("playback", "trailer")), None)
+                    
+                    if action:
+                        extras_episodes.append(
+                            Episode(
+                                id_=item["id"],
+                                service=self.__class__,
+                                title=page["visuals"]["title"],
+                                season=0, # Special
+                                number=ep_count,
+                                name=item["visuals"]["title"],
+                                year=year,
+                                language=Language.get(orig_lang),
+                                data=item
+                            )
+                        )
+                        ep_count += 1
+
+        if not extras_episodes:
+            self.log.error(" - No playable extras found.", exc_info=False)
+            sys.exit(1)
+
+        return extras_episodes
 
     def get_tracks(self, title: Title_T) -> Tracks:
         playback = next(x for x in title.data["actions"] if x.get("type") == "playback")
@@ -462,7 +547,7 @@ class DSNP(Service):
 
         self._refresh() # Safe Access
 
-        if Video.Range.HYBRID in self.range and not self.is_l3:
+        if Video.Range.HYBRID in self.range[0] and not self.is_l3:
             self.log.warning("DV+HDR Multi-range requested.")
 
             self.log.info(" + Fetching Dolby Vision tracks...")
@@ -475,15 +560,14 @@ class DSNP(Service):
         else:
             video_ranges = []
             if not self.is_l3:
-                if Video.Range.DV in self.range:
+                if Video.Range.DV in self.range[0]:
                     video_ranges = ["DOLBY_VISION"]
-                elif Video.Range.HDR10 in self.range or Video.Range.HDR10P in self.range:
+                elif Video.Range.HDR10 in self.range[0] or Video.Range.HDR10P in self.range[0]:
                     video_ranges = ["HDR10"] # HDR10PLUS
 
             tracks = self._fetch_manifest_tracks(title, media_id, scenario, video_ranges or None)
 
         tracks.add(self._get_thumbnail(title))
-        
         return self._post_process_tracks(tracks)
 
     def _fetch_manifest_tracks(self, title: Title_T, media_id: str, scenario: str, video_ranges: List[str] = None) -> Tracks:
@@ -494,8 +578,13 @@ class DSNP(Service):
             },
             "protocol": "HTTPS",
             "frameRates": [60],
-            "assetInsertionStrategy": "SGAI", # Server-Guided Ad Insertion
-            "playbackInitiationContext": "ONLINE"
+            "assetInsertionStrategies": {
+                "point": "SGAI", # Server-Guided Ad Insertion
+                "range": "SGAI" # Server-Guided Ad Insertion
+            },
+            "playbackInitiationContext": "ONLINE",
+            "slugDuration": "SLUG_500_MS", # SLUG_1000_MS, SLUG_750_MS ?
+            "maxSlideDuration": "4_HOUR" # 15_MIN ?
         }
 
         if self.is_l3:
@@ -517,9 +606,9 @@ class DSNP(Service):
                 "attributes": attributes
             }
         }
-        self.playback_data[title.id] = self._get_video(scenario, payload)
-
+        self.playback_data[title.id] = self._get_playback(scenario, payload)
         manifest_url = self.playback_data[title.id]["sources"][0]['complete']['url']
+        self.log.debug(f" + Manifest URL: {manifest_url}")
         return HLS.from_url(url=manifest_url, session=self.session).to_tracks(title.language)
     
     def _get_thumbnail(self, title: Title_T) -> Attachment:
@@ -548,67 +637,39 @@ class DSNP(Service):
                     audio.bitrate = 768_000 # DSNP lies about the Atmos bitrate
             if audio.channels == 6.0:
                 audio.channels = 5.1
+            if audio.channels == 10.0: # DTS-UHD
+                audio.channels = "5.1.4" # Unshackle does not recommend
+                audio.codec = Audio.Codec.DTS
+                audio.drm = None
 
         for subtitle in tracks.subtitles:
             subtitle.codec = Subtitle.Codec.WebVTT
 
         return tracks
-
+    
     def get_chapters(self, title: Title_T) -> Chapters:
         try:
             editorial = self.playback_data[title.id]["editorial"]
-
             if not editorial:
-                return []
+                return Chapters()
             
-            label_to_group = {
+            LABEL_MAP = {
                 "intro_start": "intro_start",
-                "FFEI": "intro_start", # First Frame Episode Intro
                 "intro_end": "intro_end",
-                "LFEI": "intro_end", # Last Frame Episode Intro
                 "recap_start": "recap_start",
-                "FFER": "recap_start", # First Frame Episode Recap
                 "recap_end": "recap_end",
-                "LFER": "recap_end",  # Last Frame Episode Recap
+                "FFER": "recap_start", # First Frame Episode Recap
+                "LFER": "recap_end", # Last Frame Episode Recap 
+                "FFEI": "intro_start", # First Frame Episode Intro
+                "LFEI": "intro_end", # Last Frame Episode Intro
                 "FFEC": "credits_start", # First Frame End Credits
                 "LFEC": "lfec_marker", # Last Frame End Credits
-                "FFCB": None, # First Frame Credits Bumper
-                "LFCB": None, # Last Frame Credits Bumper
                 "up_next": None,
                 "tag_start": None,
                 "tag_end": None,
             }
             
-            # Collision Correction
-            grouped_timestamps = {}
-            for marker in editorial:
-                label = marker.get("label")
-                group = label_to_group.get(label)
-                if group:
-                    timestamp = marker.get("offsetMillis")
-                    if timestamp is not None:
-                        if group not in grouped_timestamps:
-                            grouped_timestamps[group] = []
-                        grouped_timestamps[group].append(timestamp)
-
-            resolved_markers = []
-            for group, timestamps in grouped_timestamps.items():
-                if not timestamps:
-                    continue
-                
-                final_timestamp = 0
-                if "start" in group:
-                    final_timestamp = min(timestamps) 
-                elif "end" in group:
-                    final_timestamp = max(timestamps)
-                else:
-                    final_timestamp = timestamps[0]
-                
-                resolved_markers.append({"group": group, "ms": final_timestamp})
-
-            # Create Chapter Data
-            raw_chapter_data = []
-            group_to_name = {
+            NAME_MAP = {
                 "recap_start": "Recap",
                 "recap_end": "Scene",
                 "intro_start": "Intro",
@@ -616,66 +677,63 @@ class DSNP(Service):
                 "credits_start": "Credits",
             }
 
-            total_runtime_ms = 0
-            if "visuals" in title.data and "metastringParts" in title.data["visuals"]:
-                total_runtime_ms = title.data["visuals"]["metastringParts"]["runtime"]["runtimeMs"]
+            grouped = {}
+            for marker in editorial:
+                group = LABEL_MAP.get(marker["label"])
+                offset = marker["offsetMillis"]
+                if group and offset is not None:
+                    grouped.setdefault(group, []).append(offset)
 
-            for marker in resolved_markers:
-                group = marker["group"]
-                timestamp_ms = marker["ms"]
-                name = None
+            raw_chapters = []
+            total_runtime = title.data["visuals"]["metastringParts"]["runtime"]["runtimeMs"]
 
-                if group == "lfec_marker":
-                    if total_runtime_ms and (total_runtime_ms - timestamp_ms) > 5000: # 5 sec
-                        name = "Scene"
-                else:
-                    name = group_to_name.get(group)
+            for group, times in grouped.items():
+                if not times: continue
+
+                timestamp = min(times) if "start" in group else max(times) if "end" in group else times[0]
+                name = NAME_MAP.get(group)
                 
+                if group == "lfec_marker" and (total_runtime - timestamp) > 5000:
+                    name = "Scene"
+
                 if name:
-                    raw_chapter_data.append({"ms": timestamp_ms, "name": name})
-            
-            # Sorting and deduplication in chronological order
-            if not raw_chapter_data:
-                return []
+                    raw_chapters.append((timestamp, name))
 
-            unique_chapters_data = []
+            raw_chapters.sort(key=lambda x: x[0])
+            unique_chapters = []
             seen_ms = set()
-            for chap in sorted(raw_chapter_data, key=lambda x: x["ms"]):
-                if chap["ms"] not in seen_ms:
-                    unique_chapters_data.append(chap)
-                    seen_ms.add(chap["ms"])
             
-            # Processe the First Chapter
-            if not unique_chapters_data:
-                unique_chapters_data.append({"ms": 0, "name": "Scene"})
+            for ms, name in raw_chapters:
+                if ms not in seen_ms:
+                    unique_chapters.append({"ms": ms, "name": name})
+                    seen_ms.add(ms)
+
+            if not unique_chapters:
+                unique_chapters.append({"ms": 0, "name": "Scene"})
             else:
-                first_chapter = unique_chapters_data[0]
-                if first_chapter["ms"] > 0:
-                    if not (first_chapter["ms"] < 5000 and first_chapter["name"] in ["Intro", "Recap"]):
-                        unique_chapters_data.insert(0, {"ms": 0, "name": "Scene"})
-            
-            if unique_chapters_data:
-                first_chapter = unique_chapters_data[0]
-                if first_chapter["name"] in ["Intro", "Recap"] and first_chapter["ms"] > 0:
-                    first_chapter["ms"] = 0
+                first = unique_chapters[0]
+                if first["ms"] > 0:
+                    if first["ms"] < 5000 and first["name"] in ("Intro", "Recap"):
+                        first["ms"] = 0
+                    else:
+                        unique_chapters.insert(0, {"ms": 0, "name": "Scene"})
 
-            # Create Final Chapter List
-            final_chapters = []
-            for i, chap_info in enumerate(unique_chapters_data):
-                name = chap_info["name"]
-
-                final_chapters.append(
+            chapters: List[Chapter] = []
+            for i, chap_data in enumerate(unique_chapters):
+                time_sec = chap_data["ms"] / 1000.000
+                chapter_title = chap_data["name"]
+                chapters.append(
                     Chapter(
-                        timestamp=chap_info["ms"] / 1000.000,
-                        name=name if name != "Scene" else None
+                        timestamp=float(time_sec),
+                        name=chapter_title if chapter_title != "Scene" else None
                     )
                 )
             
-            return final_chapters
+            return chapters
 
         except Exception as e:
             self.log.warning(f"Failed to extract chapters: {e}")
-            return []
+            return Chapters()
 
     def get_widevine_service_certificate(self, *, challenge: bytes, title: Title_T, track: AnyTrack) -> Union[bytes, str]:
         # endpoint = self.prod_config["services"]["drm"]["client"]["endpoints"]["widevineCertificate"]["href"]
@@ -691,7 +749,7 @@ class DSNP(Service):
             res = self.session.post(endpoint, headers=headers, data=challenge)
             res.raise_for_status()
         except Exception as e:
-            self.log.error(f" - License request failed: {e}", exc_info=False)
+            self.log.error(f"License request failed: {e}", exc_info=False)
             sys.exit(1)
         return res.content
 
@@ -707,7 +765,7 @@ class DSNP(Service):
             res = self.session.post(endpoint, headers=headers, data=challenge)
             res.raise_for_status()
         except Exception as e:
-            self.log.error(f" - License request failed: {e}", exc_info=False)
+            self.log.error(f"License request failed: {e}", exc_info=False)
             sys.exit(1)
         return res.content
     
@@ -753,7 +811,7 @@ class DSNP(Service):
         data = self._request("GET", endpoint, params={'limit': 999})["data"]["season"]["items"]
         return data
 
-    def _get_video(self, scenario: str, payload: dict) -> dict:
+    def _get_playback(self, scenario: str, payload: dict) -> dict:
         endpoint = self._href(
             self.prod_config["services"]["media"]["client"]["endpoints"]["mediaPayload"]["href"],
             scenario=scenario
@@ -765,7 +823,7 @@ class DSNP(Service):
         data = self._request("POST", endpoint, headers=headers, payload=payload)
         return data["stream"]
 
-    def _register_device(self) -> str:
+    def _register_device(self, android_id: str, drm_id: str) -> str:
         endpoint = self.prod_config["services"]["orchestration"]["client"]["endpoints"]["registerDevice"]["href"]
         headers = {
             "Authorization": self.config["bamsdk"]["api_key"],
@@ -776,6 +834,16 @@ class DSNP(Service):
                 "registerDevice": {
                     "applicationRuntime": self.config["device"]["applicationRuntime"], 
                     "attributes": {
+                        "osDeviceIds": [
+                            {
+                                "identifier": android_id,
+                                "type": "android.vendor.id"
+                            },
+                            {
+                                "identifier": drm_id,
+                                "type": "android.drm.id"
+                            }
+                        ],
                         "operatingSystem": self.config["device"]["operatingSystem"],
                         "operatingSystemVersion": self.config["device"]["operatingSystemVersion"]
                     },
@@ -797,7 +865,7 @@ class DSNP(Service):
             "X-BAMSDK-Platform-Id": self.config["device"]["platform_id"]
         }
         payload = {
-            "operationName": "Check",
+            "operationName": "check",
             "variables": {
                 "email": email
             },
@@ -805,7 +873,7 @@ class DSNP(Service):
         }
         data = self._request("POST", endpoint, payload=payload, headers=headers)
         return data["data"]["check"]["operations"][0]
-
+    
     def _login_with_password(self, email: str, password: str, token: str) -> str:
         endpoint = self.prod_config["services"]["orchestration"]["client"]["endpoints"]["query"]["href"]
         headers = {
@@ -813,25 +881,88 @@ class DSNP(Service):
             "X-BAMSDK-Platform-Id": self.config["device"]["platform_id"]
         }
         payload = {
-            "operationName": "loginTv",
+            "operationName": "login",
             "variables": {
                 "input": {
                     "email": email,
                     "password": password
-                }
+                },
+                "includeIdentity": True,
+                "includeAccountConsentToken": True
             },
             "query": queries.LOGIN
         }
         data = self._request("POST", endpoint, payload=payload, headers=headers)
-        return data["extensions"]["sdk"]["token"]
+        return data["extensions"]["sdk"]
+    
+    def _request_otp(self, email: str, token: str) -> dict:
+        endpoint = self.prod_config["services"]["orchestration"]["client"]["endpoints"]["query"]["href"]
+        headers = {
+            "Authorization": token,
+            "X-BAMSDK-Platform-Id": self.config["device"]["platform_id"]
+        }
+        payload = {
+            "operationName": "requestOtp",
+            "variables": {
+                "input": {
+                    "email": email,
+                    "reason": "Login"
+                }
+            },
+            "query": queries.REQUESET_OTP
+        }
+        data = self._request("POST", endpoint, payload=payload, headers=headers)
+        if not data["data"]["requestOtp"]["accepted"]:
+            self.log.error(" - OTP code request failed.", exc_info=False)
+            sys.exit(1)
 
-    def _get_account_info_raw(self, headers: dict = {}) -> dict:
+    def _auth_action_with_otp(self, email: str, otp: str, token: str) -> dict:
+        endpoint = self.prod_config["services"]["orchestration"]["client"]["endpoints"]["query"]["href"]
+        headers = {
+            "Authorization": token,
+            "X-BAMSDK-Platform-Id": self.config["device"]["platform_id"]
+        }
+        payload = {
+            "operationName": "authenticateWithOtp",
+            "variables": {
+                "input": {
+                    "email": email,
+                    "passcode": otp
+                }
+            },
+            "query": queries.LOGIN_OTP
+        }
+        data = self._request("POST", endpoint, payload=payload, headers=headers)
+        return data["data"]["authenticateWithOtp"]["actionGrant"]
+    
+    def _login_with_auth_action(self, auth_action: str, token: str) -> dict:
+        endpoint = self.prod_config["services"]["orchestration"]["client"]["endpoints"]["query"]["href"]
+        headers = {
+            "Authorization": token,
+            "X-BAMSDK-Platform-Id": self.config["device"]["platform_id"]
+        }
+        payload = {
+            "operationName": "loginWithActionGrant",
+            "variables": {
+                "input": {
+                    "actionGrant": auth_action
+                },
+                "includeAccountConsentToken": True
+            },
+            "query": queries.LOGIN_ACTION_GRANT
+        }
+        data = self._request("POST", endpoint, payload=payload, headers=headers)
+        return data["extensions"]["sdk"]
+    
+    def _get_account_info(self, headers: dict = {}) -> dict:
         endpoint = self.prod_config["services"]["orchestration"]["client"]["endpoints"]["query"]["href"]
         headers.update({"X-BAMSDK-Platform-Id": self.config["device"]["platform_id"]})
         payload = {
-            "operationName": "EntitledGraphMeQuery",
-            "variables": {},
-            "query": queries.ENTITLEMENTS
+            "operationName": "me",
+            "variables": {
+                "includeAccountConsentToken": True
+            },
+            "query": queries.ME
         }
         data = self._request("POST", endpoint, payload=payload, headers=headers)
         return data["data"]["me"]
@@ -845,7 +976,9 @@ class DSNP(Service):
         payload = {
             "operationName": "switchProfile",
             "variables": {
-                "input": profile_input
+                "input": profile_input,
+                "includeIdentity": True,
+                "includeAccountConsentToken": True
             },
             "query": queries.SWITCH_PROFILE
         }
@@ -861,7 +994,7 @@ class DSNP(Service):
         payload = {
             "operationName": "refreshToken",
             "variables": {
-                "input": {
+                "refreshToken": {
                     "refreshToken": refresh_token
                 }
             },
@@ -870,7 +1003,7 @@ class DSNP(Service):
         data = self._request("POST", endpoint, payload=payload, headers=headers)
         return data["extensions"]["sdk"]
 
-    def _update_device(self) -> str:
+    def _update_device(self, android_id: str, drm_id: str) -> str:
         endpoint = self.prod_config["services"]["orchestration"]["client"]["endpoints"]["query"]["href"]
         headers = {"X-BAMSDK-Platform-Id": self.config["device"]["platform_id"]}
         payload = {
@@ -878,7 +1011,17 @@ class DSNP(Service):
             "variables": {
                 "updateDeviceOperatingSystem": {
                     "operatingSystem": self.config["device"]["operatingSystem"],
-                    "operatingSystemVersion": self.config["device"]["operatingSystemVersion"]
+                    "operatingSystemVersion": self.config["device"]["operatingSystemVersion"],
+                    "osDeviceIds": [
+                        {
+                            "identifier": android_id,
+                            "type": "android.vendor.id"
+                        },
+                        {
+                            "identifier": drm_id,
+                            "type": "android.drm.id"
+                        }
+                    ]
                 }
             },
             "query": queries.UPDATE_DEVICE
@@ -906,10 +1049,10 @@ class DSNP(Service):
         data = self._request("POST", endpoint, payload=payload, headers=headers)
         
         if data["data"]["updateProfileImaxEnhancedVersion"]["accepted"]:
-            self.log.info(f"   + Updated IMAX Enhanced preference: {enabled}")
+            self.log.info(f"  + Updated IMAX Enhanced preference: {enabled}")
             return data["extensions"]["sdk"]
         else:
-            self.log.warning("   - Failed to set IMAX preference.")
+            self.log.warning("  - Failed to set IMAX preference.")
 
     def _set_remastered_ar_preference(self, enabled: bool) -> str:
         endpoint = self.prod_config["services"]["orchestration"]["client"]["endpoints"]["query"]["href"]
@@ -927,10 +1070,10 @@ class DSNP(Service):
         data = self._request("POST", endpoint, payload=payload, headers=headers)
         
         if data["data"]["updateProfileRemasteredAspectRatio"]["accepted"]:
-            self.log.info(f"   + Updated Remastered Aspect Ratio preference: {enabled}")
+            self.log.info(f"  + Updated Remastered Aspect Ratio preference: {enabled}")
             return data["extensions"]["sdk"]
         else:
-            self.log.warning("   - Failed to set Remastered Aspect Ratio preference.")
+            self.log.warning("  - Failed to set Remastered Aspect Ratio preference.")
 
     def _href(self, href: str, **kwargs: Any) -> str:
         _args = {"version": self.config["bamsdk"]["explore_version"]}
@@ -947,7 +1090,6 @@ class DSNP(Service):
 
         req = Request(method, endpoint, headers=_headers, params=params, json=payload)
         prepped = self.session.prepare_request(req)
-        
         try:
             res = self.session.send(prepped)
             res.raise_for_status()
@@ -956,13 +1098,15 @@ class DSNP(Service):
                 error_code = data["errors"][0]["extensions"]["code"]
                 if "token.service.invalid.grant" in error_code:
                     raise ConnectionError(f"Refresh Token Expired: {error_code}")
-                if "token.service.unauthorized.client" in error_code:
+                elif "token.service.unauthorized.client" in error_code:
                     raise ConnectionError(f"Unauthorized Client/IP: {error_code}")
                 elif "idp.error.identity.bad-credentials" in error_code:
                     raise ConnectionError(f"Bad Credentials: {error_code}")
                 elif "account.profile.pin.invalid" in error_code:
                     raise ConnectionError(f"Invalid PIN: {error_code}")
                 raise ConnectionError(data["errors"])
+            if data.get("data") and data["data"].get("errors"):
+                raise ConnectionError(data["data"]["errors"])
             return data
         except Exception as e:
             if "Refresh Token Expired" in str(e) or "/deeplink" in endpoint:

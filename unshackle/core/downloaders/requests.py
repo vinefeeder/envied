@@ -122,7 +122,7 @@ def download(
                                 last_speed_refresh = now
                                 download_sizes.clear()
 
-                if content_length and written < content_length:
+                if not segmented and content_length and written < content_length:
                     raise IOError(f"Failed to read {content_length} bytes from the track URI.")
 
                 yield dict(file_downloaded=save_path, written=written)
@@ -260,11 +260,18 @@ def requests(
             },
         )
 
-    yield dict(total=len(urls))
+    # If we're downloading more than one URL, treat them as "segments" for progress purposes.
+    # For single-URL downloads we want per-chunk progress (and the inner `download()` will yield
+    # a chunk-based `total`), so don't set a segment total of 1 here.
+    segmented_batch = len(urls) > 1
+    if segmented_batch:
+        yield dict(total=len(urls))
 
     try:
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
-            for future in as_completed(pool.submit(download, session=session, segmented=False, **url) for url in urls):
+            for future in as_completed(
+                pool.submit(download, session=session, segmented=segmented_batch, **url) for url in urls
+            ):
                 try:
                     yield from future.result()
                 except KeyboardInterrupt:
