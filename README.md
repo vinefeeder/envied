@@ -1,8 +1,8 @@
 # NOTICE
 
-Envied is stopping development. It is updated to 16 February 2026 version 3.0.0 of unshackle.  The unshackle developers have themselves added --select-titles, which distinguished this fork. The reason for existence of envied as a stand-alone project has been removed.
+Envied is stopping development. It is updated to 16 February 2026 version 3.0.0 of unshackle.  The unshackle developers have themselves added --select-titles, which previously distinguished this fork. The reason for existence of envied as a stand-alone project has been removed.
 
-My other project TwinVine the incorporates envied will continue. It allows envied to be run as a stand-alone https://github.com/vinefeeder/TwinVine.
+My other project TwinVine, which incorporates envied, will continue. It allows envied to be run as a stand-alone https://github.com/vinefeeder/TwinVine.
 
 ## What is envied?
 
